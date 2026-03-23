@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>vs_copilot_insights</RootNamespace>
+    <AssemblyName>vs_copilot_insights</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VisualStudio.Extensibility.Sdk" Version="17.14.40608" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.VisualStudio.Extensibility.Build" Version="17.14.40608" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Page Remove="CopilotInsightsControl.xaml" />
+    <EmbeddedResource Include="CopilotInsightsControl.xaml" LogicalName="vs_copilot_insights.CopilotInsightsControl.xaml" />
+  </ItemGroup>
+</Project>

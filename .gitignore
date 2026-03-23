@@ -1,0 +1,88 @@
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+ARM/
+ARM64/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# MSBuild
+*.log
+msbuild.binlog
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+
+# Windows shortcuts
+*.lnk
+
+# User-specific files
+*.rsuser
+*.user
+*.dbmdl
+*.dbproj.schemaview
+*.jfm
+*.pfx
+*.publishsettings
+
+# WinUI / MSIX
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+*.appxupload
+
+# WinUI Generated Files
+Generated Files/
+
+# Application Insights
+ApplicationInsights.config
+
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+
+# Publish folder
+publish/
+
+# Others
+*.cache
+ClientBin/
+~$*
+*~
+*.tmp
+*.bak
+*.swp
