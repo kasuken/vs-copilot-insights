@@ -81,6 +81,9 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged
 {
     private readonly GitHubCopilotService _service;
 
+    // Under GitHub's AI Credits billing model, 1 AI credit costs $0.01 USD.
+    private const double CreditCostUsd = 0.01;
+
     private bool _isLoading = true;
     private bool _hasError;
     private bool _hasData;
@@ -216,14 +219,15 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged
                 card.IsOverQuota = isOver;
                 card.IsLimited = true;
                 (card.StatusEmoji, card.StatusLabel) = GetStatusBadge(percentRemaining);
-                card.ProgressValue = Math.Clamp(percentUsed, 0, 100);
+                card.ProgressValue = Math.Clamp(percentRemaining, 0, 100);
 
                 if (isOver)
                 {
                     card.UsageDisplay = $"{Format(used)} / {Format(quota.Entitlement)} used";
                     card.PercentDisplay = $"{percentUsed}% used";
-                    double estimatedCost = overAmount * 0.04;
-                    card.OverageDisplay = $"Over by {Format(overAmount)} requests" +
+                    double billableOverage = Math.Max(0, used - quota.Entitlement);
+                    double estimatedCost = billableOverage * CreditCostUsd;
+                    card.OverageDisplay = $"Over by {Format(overAmount)} credits" +
                         (quota.OveragePermitted
                             ? $" (est. cost: ${estimatedCost:F2})"
                             : " (overage NOT permitted)");
@@ -239,39 +243,45 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged
                     premiumQuota = quota;
                     card.ShowPremiumStats = true;
                     card.PremiumMood = GetMood(percentRemaining);
-                    card.PremiumRemainingPercent = $"{Math.Max(0, percentRemaining):F1}% remaining";
+                    card.PremiumRemainingPercent = $"{Math.Max(0, percentRemaining)}% remaining";
                     card.PremiumRemaining = Format(Math.Max(quota.QuotaRemaining, 0));
                     card.PremiumUsed = Format(used);
                     card.PremiumTotal = Format(quota.Entitlement);
 
-                    if (timeUntilReset is { } diff && resetDateUtc is { } resetAt && diff.TotalHours > 0)
+                    if (timeUntilReset is { } diff && resetDateUtc is { } resetAt && diff.TotalDays > 0)
                     {
-                        double daysLeft = Math.Max(diff.TotalDays, 0.01);
-                        double premiumRemaining = Math.Max(quota.QuotaRemaining, 0);
+                        double totalDays = diff.TotalDays;
+                        double remaining = Math.Max(quota.QuotaRemaining, 0);
 
-                        double dailyAllowance = premiumRemaining / daysLeft;
-                        double weeklyAverage = dailyAllowance * 7;
-                        double workdaysLeft = Math.Max(daysLeft * 5.0 / 7.0, 0.01);
-                        double workdayAverage = premiumRemaining / workdaysLeft;
-                        double workhoursLeft = Math.Max(workdaysLeft * 8.0, 0.01);
-                        double workhourAverage = premiumRemaining / workhoursLeft;
+                        long allowedPerDay = (long)Math.Floor(remaining / totalDays);
+                        double weeksRemaining = Math.Max(1, totalDays / 7.0);
+                        long allowedPerWeek = (long)Math.Floor(remaining / weeksRemaining);
+                        long workingDays = (long)Math.Floor(totalDays * 5.0 / 7.0);
+                        long allowedPerWorkDay = workingDays > 0 ? (long)Math.Floor(remaining / workingDays) : 0;
+                        long totalWorkingHours = workingDays * 8;
+                        long allowedPerHour = totalWorkingHours > 0 ? (long)Math.Floor(remaining / totalWorkingHours) : 0;
 
-                        card.PremiumAllowancePerDay = FormatAtMostPerPeriod(dailyAllowance, "day");
+                        long budgetEfficient = (long)Math.Floor(remaining / 0.33 / totalDays);
+                        long budgetStandard = (long)Math.Floor(remaining / totalDays);
+                        long budgetAdvanced = (long)Math.Floor(remaining / 3.0 / totalDays);
+
+                        card.PremiumAllowancePerDay = $"\u2264 {allowedPerDay}/day";
                         card.PremiumResetIn = FormatResetInShort(diff);
                         card.PremiumResetDate = resetAt.ToLocalTime().ToString("MMM d, yyyy", CultureInfo.InvariantCulture);
 
-                        card.PremiumWeeklyAverage = FormatAtMostPerPeriod(weeklyAverage, "week");
-                        card.PremiumWorkdayAverage = FormatAtMostPerPeriod(workdayAverage, "day (Mon-Fri)");
-                        card.PremiumWorkhourAverage = FormatAtMostPerPeriod(workhourAverage, "hour (9-5)");
+                        card.PremiumWeeklyAverage = $"\u2264 {allowedPerWeek}/week";
+                        card.PremiumWorkdayAverage = $"\u2264 {allowedPerWorkDay}/day (Mon-Fri)";
+                        card.PremiumWorkhourAverage = $"\u2264 {allowedPerHour}/hour (9-5)";
 
-                        card.PremiumEfficientCapacity = FormatApproxPerDay(dailyAllowance / 0.33);
-                        card.PremiumStandardCapacity = FormatApproxPerDay(dailyAllowance);
-                        card.PremiumAdvancedCapacity = FormatApproxPerDay(dailyAllowance / 3.0);
+                        card.PremiumEfficientCapacity = $"~{budgetEfficient}/day";
+                        card.PremiumStandardCapacity = $"~{budgetStandard}/day";
+                        card.PremiumAdvancedCapacity = $"~{budgetAdvanced}/day";
                     }
 
+                    double billableOverage = Math.Max(0, used - quota.Entitlement);
                     card.PremiumOveragePolicy = quota.OveragePermitted
                         ? isOver
-                            ? $"Overage permitted ({Format(overAmount)} over, est. cost: ${(overAmount * 0.04):F2})"
+                            ? $"Overage permitted ({Format(overAmount)} over, est. cost: ${(billableOverage * CreditCostUsd):F2})"
                             : quota.OverageCount > 0
                                 ? $"Overage permitted ({Format(quota.OverageCount)} used)"
                                 : "Overage permitted"
@@ -303,15 +313,18 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged
             // Pacing guidance (only for premium interactions with limited quota)
             if (premiumQuota is not null && !premiumQuota.Unlimited && diff.TotalDays > 0 && premiumQuota.QuotaRemaining > 0)
             {
-                double daysLeft = diff.TotalDays;
-                double daily = premiumQuota.QuotaRemaining / daysLeft;
-                double weekly = daily * 7;
-                double workdaysLeft = daysLeft * 5.0 / 7.0;
-                double perWorkday = workdaysLeft > 0 ? premiumQuota.QuotaRemaining / workdaysLeft : 0;
+                double totalDays = diff.TotalDays;
+                double remaining = premiumQuota.QuotaRemaining;
 
-                DailyValue = $"~{daily:F1} requests";
-                WeeklyValue = $"~{weekly:F1} requests";
-                WorkdayValue = $"~{perWorkday:F1} requests";
+                long daily = (long)Math.Floor(remaining / totalDays);
+                double weeksRemaining = Math.Max(1, totalDays / 7.0);
+                long weekly = (long)Math.Floor(remaining / weeksRemaining);
+                long workingDays = (long)Math.Floor(totalDays * 5.0 / 7.0);
+                long perWorkday = workingDays > 0 ? (long)Math.Floor(remaining / workingDays) : 0;
+
+                DailyValue = $"\u2264 {daily}/day";
+                WeeklyValue = $"\u2264 {weekly}/week";
+                WorkdayValue = $"\u2264 {perWorkday}/day (Mon-Fri)";
                 HasPacing = true;
             }
             else
@@ -337,18 +350,22 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged
 
     private static string FormatQuotaName(string quotaId)
     {
-        return CultureInfo.InvariantCulture.TextInfo
-            .ToTitleCase(quotaId.Replace('_', ' '));
+        return quotaId switch
+        {
+            "premium_interactions" => "AI Credits",
+            "completions" => "Suggestions",
+            _ => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(quotaId.Replace('_', ' ')),
+        };
     }
 
     private static (string Emoji, string Label) GetStatusBadge(double percentRemaining)
     {
         return percentRemaining switch
         {
-            <= 0 => ("✖", "Over Quota"),
-            > 50 => ("✔", "Healthy"),
-            >= 20 => ("⚠", "Watch"),
-            _ => ("▲", "Risk"),
+            <= 0 => ("\U0001F6AB", "Over Quota"),
+            > 50 => ("\U0001F7E2", "Healthy"),
+            >= 20 => ("\U0001F7E1", "Watch"),
+            _ => ("\U0001F534", "Risk"),
         };
     }
 
@@ -356,29 +373,17 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged
     {
         return percentRemaining switch
         {
-            <= 0 => "Over quota",
-            <= 15 => "Getting tight",
-            <= 40 => "Watch usage",
-            <= 75 => "You are fine",
-            _ => "Comfortable",
+            <= 0 => "\U0001F480 Over quota",
+            > 75 => "\U0001F60C Plenty of quota left",
+            > 40 => "\U0001F642 You\u2019re fine",
+            > 15 => "\U0001F62C Getting tight",
+            _ => "\U0001F631 Danger zone",
         };
     }
 
     private static string Format(double value)
     {
-        return value == Math.Floor(value)
-            ? value.ToString("F0", CultureInfo.InvariantCulture)
-            : value.ToString("F1", CultureInfo.InvariantCulture);
-    }
-
-    private static string FormatAtMostPerPeriod(double value, string period)
-    {
-        return $"≤ {Math.Max(0, Math.Round(value)):F0}/{period}";
-    }
-
-    private static string FormatApproxPerDay(double value)
-    {
-        return $"~{Math.Max(0, Math.Round(value)):F0}/day";
+        return value.ToString("0.##", CultureInfo.InvariantCulture);
     }
 
     private static string FormatResetInShort(TimeSpan diff)

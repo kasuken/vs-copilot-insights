@@ -159,7 +159,7 @@
                                         </Grid>
 
                                         <Border Height="1" Background="#22FFFFFF" Margin="0,12,0,10" />
-                                        <TextBlock Text="Projection before reset" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
+                                        <TextBlock Text="Projected AI credits before the reset" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
@@ -176,19 +176,19 @@
                                         </Grid>
 
                                         <Border Height="1" Background="#22FFFFFF" Margin="0,12,0,10" />
-                                        <TextBlock Text="Daily capacity by model cost" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
+                                        <TextBlock Text="Daily Capacity by Model Cost" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="Efficient (0.33x):" Style="{StaticResource DIM}" />
+                                            <TextBlock Grid.Column="0" Text="Efficient:" Style="{StaticResource DIM}" />
                                             <TextBlock Grid.Column="1" Text="{Binding PremiumEfficientCapacity}" FontWeight="SemiBold" />
 
-                                            <TextBlock Grid.Column="0" Margin="0,22,0,0" Text="Standard (1x):" Style="{StaticResource DIM}" />
+                                            <TextBlock Grid.Column="0" Margin="0,22,0,0" Text="Standard:" Style="{StaticResource DIM}" />
                                             <TextBlock Grid.Column="1" Margin="0,22,0,0" Text="{Binding PremiumStandardCapacity}" FontWeight="SemiBold" />
 
-                                            <TextBlock Grid.Column="0" Margin="0,44,0,0" Text="Advanced (3x):" Style="{StaticResource DIM}" />
+                                            <TextBlock Grid.Column="0" Margin="0,44,0,0" Text="Advanced:" Style="{StaticResource DIM}" />
                                             <TextBlock Grid.Column="1" Margin="0,44,0,0" Text="{Binding PremiumAdvancedCapacity}" FontWeight="SemiBold" />
                                         </Grid>
 

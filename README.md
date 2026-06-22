@@ -4,7 +4,7 @@
 
 # Copilot Insights for Visual Studio
 
-See your GitHub Copilot plan, quotas, reset window, and premium usage pacing directly inside Visual Studio.
+See your GitHub Copilot plan, quotas, reset window, and AI credit usage pacing directly inside Visual Studio.
 
 ## Overview
 
@@ -12,7 +12,7 @@ Copilot Insights gives you a fast, local view of the quota and entitlement data 
 
 It focuses on practical visibility, not team analytics. It helps answer questions like:
 
-- How much premium quota is left?
+- How many AI credits are left?
 - When does quota reset?
 - Am I likely to run out before reset?
 - Is overage enabled, and what could it cost?
@@ -21,10 +21,10 @@ It focuses on practical visibility, not team analytics. It helps answer question
 ## Highlights
 
 - Native Visual Studio tool window (`Copilot Insights`) with quota cards and plan details.
-- Premium quota health, mood, and remaining/used/total breakdown.
+- AI credit health, mood, and remaining/used/total breakdown.
 - Reset timing display with countdown and local reset date.
 - Pacing guidance for daily, weekly, and workday usage.
-- Premium projection and capacity estimates by model cost (`0.33x`, `1x`, `3x`).
+- AI credit projection and daily capacity estimates by model cost (Efficient, Standard, Advanced).
 - Overage messaging with estimated cost when overage is permitted.
 - Manual refresh button from inside the tool window.
 
@@ -39,11 +39,11 @@ Each quota card shows:
 - Remaining/used values and percentages.
 - Over-quota details when applicable.
 
-For `premium_interactions`, the extension also shows:
+For AI Credits (`premium_interactions`), the extension also shows:
 
 - Mood indicator and remaining percentage.
 - Reset timing summary.
-- Projection before reset.
+- Projected AI credits before reset.
 - Daily capacity estimates by model cost multiplier.
 - Overage policy summary.
 
@@ -53,7 +53,7 @@ The tool window includes:
 
 - Reset countdown (`days`/`hours`).
 - Reset date converted to local time.
-- Pacing guidance to stay within premium quota:
+- Pacing guidance to stay within your AI credit quota:
   - Daily
   - Weekly
   - Workday (Mon-Fri)

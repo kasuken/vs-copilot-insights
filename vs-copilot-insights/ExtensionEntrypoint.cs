@@ -18,7 +18,7 @@ internal class ExtensionEntrypoint : Extension
                 version: this.ExtensionAssemblyVersion,
                 publisherName: "Emanuele Bartolesi",
                 displayName: "Copilot Insights",
-                description: "See your GitHub Copilot plan, quotas, reset window, and premium usage trends directly inside Visual Studio."),
+                description: "See your GitHub Copilot plan, quotas, reset window, and AI credit usage trends directly inside Visual Studio."),
     };
 
     /// <inheritdoc />
