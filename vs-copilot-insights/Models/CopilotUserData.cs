@@ -39,15 +39,30 @@ internal sealed class QuotaSnapshot
 
     [JsonPropertyName("overage_count")]
     public double OverageCount { get; set; }
+
+    [JsonPropertyName("has_quota")]
+    public bool HasQuota { get; set; }
 }
 
 internal sealed class CopilotUserData
 {
+    [JsonPropertyName("login")]
+    public string Login { get; set; } = string.Empty;
+
     [JsonPropertyName("copilot_plan")]
     public string CopilotPlan { get; set; } = string.Empty;
 
     [JsonPropertyName("chat_enabled")]
     public bool ChatEnabled { get; set; }
+
+    [JsonPropertyName("cli_enabled")]
+    public bool CliEnabled { get; set; }
+
+    [JsonPropertyName("is_mcp_enabled")]
+    public bool IsMcpEnabled { get; set; }
+
+    [JsonPropertyName("editor_preview_features_enabled")]
+    public bool EditorPreviewFeaturesEnabled { get; set; }
 
     [JsonPropertyName("access_type_sku")]
     public string AccessTypeSku { get; set; } = string.Empty;
@@ -69,4 +84,7 @@ internal sealed class CopilotUserData
 
     [JsonPropertyName("tracking_id")]
     public string? TrackingId { get; set; }
+
+    [JsonIgnore]
+    public string RawJson { get; set; } = string.Empty;
 }

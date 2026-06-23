@@ -236,6 +236,172 @@
                         </StackPanel>
                     </Border>
                 </StackPanel>
+
+                <StackPanel Visibility="{Binding HasUsageTrend, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="USAGE TREND" Style="{StaticResource SH}" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <StackPanel Visibility="{Binding HasChart, Converter={StaticResource BoolToVis}}" Margin="0,0,0,4">
+                                <TextBlock Text="AI Credits over time" Style="{StaticResource DIM}" Margin="0,0,0,8" />
+                                <Border Height="56" HorizontalAlignment="Left">
+                                    <ItemsControl ItemsSource="{Binding ChartBars}" VerticalAlignment="Bottom">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Width="6" Height="56" Margin="1,0,1,0" Background="Transparent">
+                                                    <Border VerticalAlignment="Bottom" Height="{Binding Height}" Background="#3A8DFF" CornerRadius="2" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Border>
+                            </StackPanel>
+
+                            <StackPanel Visibility="{Binding HasComparisons, Converter={StaticResource BoolToVis}}" Margin="0,4,0,0">
+                                <Grid Visibility="{Binding HasSinceLastRefresh, Converter={StaticResource BoolToVis}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Since last refresh:" Style="{StaticResource DIM}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SinceLastRefreshDisplay}" FontWeight="SemiBold" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0" Visibility="{Binding HasSinceYesterday, Converter={StaticResource BoolToVis}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Since yesterday:" Style="{StaticResource DIM}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SinceYesterdayDisplay}" FontWeight="SemiBold" />
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Visibility="{Binding HasPrediction, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="WEIGHTED PREDICTION" Style="{StaticResource SH}" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Predicted daily usage" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                <Border Grid.Column="1" Background="#2A3A8DFF" CornerRadius="10" Padding="8,2">
+                                    <TextBlock Text="{Binding PredictionConfidenceLabel}" FontSize="11" FontWeight="SemiBold" Foreground="White" />
+                                </Border>
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,8">
+                                <TextBlock Text="{Binding PredictedDailyUsageDisplay}" FontSize="22" FontWeight="Bold" VerticalAlignment="Bottom" />
+                                <TextBlock Text="credits/day" Style="{StaticResource DIM}" Margin="6,0,0,3" VerticalAlignment="Bottom" />
+                            </StackPanel>
+
+                            <Border Height="1" Background="#22FFFFFF" Margin="0,0,0,10" />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Est. daily cost:" Style="{StaticResource DIM}" />
+                                <TextBlock Grid.Column="1" Text="{Binding PredictionDailyCost}" FontWeight="SemiBold" />
+
+                                <TextBlock Grid.Column="0" Margin="0,22,0,0" Text="Projected monthly cost:" Style="{StaticResource DIM}" />
+                                <TextBlock Grid.Column="1" Margin="0,22,0,0" Text="{Binding PredictionMonthlyCost}" FontWeight="SemiBold" />
+                            </Grid>
+
+                            <Grid Margin="0,6,0,0" Visibility="{Binding HasExhaustion, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Est. days until exhausted:" Style="{StaticResource DIM}" />
+                                <TextBlock Grid.Column="1" Text="{Binding DaysUntilExhaustionDisplay}" FontWeight="SemiBold" />
+                            </Grid>
+
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Sustainability:" Style="{StaticResource DIM}" />
+                                <TextBlock Grid.Column="1" Text="{Binding SustainabilityDisplay}" FontWeight="SemiBold" />
+                            </Grid>
+
+                            <TextBlock Text="{Binding PredictionConfidenceReason}" Style="{StaticResource DIM}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Visibility="{Binding HasBurnRate, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="BURN RATE ANALYSIS" Style="{StaticResource SH}" />
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="6" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="6" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="6" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Recent burn rate:" Style="{StaticResource DIM}" />
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RecentBurnRateDisplay}" FontWeight="SemiBold" />
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Overall average:" Style="{StaticResource DIM}" />
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding OverallBurnRateDisplay}" FontWeight="SemiBold" />
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Projected monthly cost:" Style="{StaticResource DIM}" />
+                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding ProjectedMonthlyCostDisplay}" FontWeight="SemiBold" />
+                            <TextBlock Grid.Row="6" Grid.Column="0" Text="Trend:" Style="{StaticResource DIM}" />
+                            <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding TrendIndicatorDisplay}" FontWeight="SemiBold" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <TextBlock Text="EXPORT" Style="{StaticResource SH}" />
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0"
+                                    Command="{Binding CopyMarkdownCommand}"
+                                    Padding="10,7"
+                                    HorizontalContentAlignment="Center"
+                                    Background="#16FFFFFF"
+                                    BorderBrush="#44808080"
+                                    BorderThickness="1"
+                                    Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}">
+                                <TextBlock Text="Copy as Markdown" FontSize="12" />
+                            </Button>
+                            <Button Grid.Column="2"
+                                    Command="{Binding CopyJsonCommand}"
+                                    Padding="10,7"
+                                    HorizontalContentAlignment="Center"
+                                    Background="#16FFFFFF"
+                                    BorderBrush="#44808080"
+                                    BorderThickness="1"
+                                    Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}">
+                                <TextBlock Text="Copy as JSON" FontSize="12" />
+                            </Button>
+                        </Grid>
+                        <TextBlock Text="{Binding ExportStatus}" Style="{StaticResource DIM}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
             </StackPanel>
 
             <TextBlock Text="PLAN DETAILS" Style="{StaticResource SH}" />
@@ -263,6 +429,57 @@
                     <TextBlock Grid.Row="6" Grid.Column="0" Text="Orgs" Style="{StaticResource LBL}" />
                     <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding OrgValue}" Style="{StaticResource VAL}" />
                 </Grid>
+            </Border>
+
+            <TextBlock Text="SETTINGS" Style="{StaticResource SH}" />
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <TextBlock Text="Custom AI credit limit (0 = plan default)" Style="{StaticResource DIM}" Margin="0,0,0,4" />
+                    <TextBox Text="{Binding CustomCreditLimitInput, Mode=TwoWay}"
+                             Padding="6,4"
+                             Background="#22000000"
+                             BorderBrush="#44808080"
+                             BorderThickness="1"
+                             Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}" />
+
+                    <TextBlock Text="Auto-refresh interval in seconds (0 = off)" Style="{StaticResource DIM}" Margin="0,12,0,4" />
+                    <TextBox Text="{Binding PollingIntervalInput, Mode=TwoWay}"
+                             Padding="6,4"
+                             Background="#22000000"
+                             BorderBrush="#44808080"
+                             BorderThickness="1"
+                             Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}" />
+
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0"
+                                Command="{Binding SaveSettingsCommand}"
+                                Padding="10,7"
+                                HorizontalContentAlignment="Center"
+                                Background="#16FFFFFF"
+                                BorderBrush="#44808080"
+                                BorderThickness="1"
+                                Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}">
+                            <TextBlock Text="Save" FontSize="12" />
+                        </Button>
+                        <Button Grid.Column="2"
+                                Command="{Binding ResetSettingsCommand}"
+                                Padding="10,7"
+                                HorizontalContentAlignment="Center"
+                                Background="#16FFFFFF"
+                                BorderBrush="#44808080"
+                                BorderThickness="1"
+                                Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}">
+                            <TextBlock Text="Reset to defaults" FontSize="12" />
+                        </Button>
+                    </Grid>
+
+                    <TextBlock Text="{Binding SettingsStatus}" Style="{StaticResource DIM}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                </StackPanel>
             </Border>
 
             <Button Command="{Binding RefreshCommand}"

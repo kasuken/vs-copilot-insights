@@ -26,6 +26,12 @@ It focuses on practical visibility, not team analytics. It helps answer question
 - Pacing guidance for daily, weekly, and workday usage.
 - AI credit projection and daily capacity estimates by model cost (Efficient, Standard, Advanced).
 - Overage messaging with estimated cost when overage is permitted.
+- Local snapshot history with a mini trend chart and delta comparisons (since last refresh / yesterday).
+- Weighted usage prediction (estimated days until exhaustion, confidence, sustainability).
+- Burn-rate / trend analysis (recent vs overall, projected monthly cost).
+- Configurable auto-refresh (background polling) and a custom AI credit limit.
+- One-click export of the current snapshot to the clipboard as Markdown or raw JSON.
+- Low-quota alert when AI credit usage crosses 85%.
 - Manual refresh button from inside the tool window.
 
 ## What You Get
@@ -66,6 +72,40 @@ A summary card with:
 - Chat availability
 - Access SKU
 - Organization access list/count
+
+### Usage trend and history
+
+The tool window keeps a small local history of AI credit (`premium_interactions`) snapshots and uses it to show:
+
+- A mini "AI Credits over time" bar chart of recent snapshots.
+- Delta comparisons: change since the last refresh and since roughly a day ago.
+
+### Prediction and burn rate
+
+Once enough history is collected, the view adds:
+
+- **Weighted prediction:** predicted daily usage, estimated daily/monthly cost, estimated days until exhaustion, a confidence level (low/medium/high), and a sustainability check against the reset date.
+- **Burn rate analysis:** recent vs. overall burn rate, projected monthly cost, and an accelerating/slowing/stable trend indicator.
+
+### Export
+
+The `Export` card copies the current snapshot to the clipboard as:
+
+- A Markdown summary for sharing in docs, issues, or chat.
+- The raw Copilot payload as formatted JSON.
+
+### Low-quota alert
+
+When AI credit usage crosses 85% of your (plan or custom) limit, a one-time warning notification is shown for the current billing period.
+
+### Settings
+
+The `Settings` card persists locally and lets you configure:
+
+- **Custom AI credit limit** — budget against a custom limit above your plan entitlement (`0` uses the plan default). Progress, prediction, pacing, and alerts then track the custom limit.
+- **Auto-refresh interval (seconds)** — automatically refresh in the background every N seconds (`0` disables polling).
+
+History, settings, and alert state are stored as JSON under `%LOCALAPPDATA%\vs-copilot-insights`. No external service is used.
 
 ## Requirements
 

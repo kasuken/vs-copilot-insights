@@ -3,6 +3,8 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
+using Microsoft.VisualStudio.Extensibility;
+using Microsoft.VisualStudio.Extensibility.Shell;
 using Microsoft.VisualStudio.Extensibility.UI;
 using vs_copilot_insights.Models;
 using vs_copilot_insights.Services;
@@ -77,12 +79,43 @@ internal sealed class QuotaCardViewModel : INotifyPropertyChanged
 }
 
 [DataContract]
-internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged
+internal sealed class ChartBarViewModel : INotifyPropertyChanged
+{
+    private double _height;
+    private string _tooltip = string.Empty;
+
+    [DataMember] public double Height { get => _height; set => SetField(ref _height, value); }
+    [DataMember] public string Tooltip { get => _tooltip; set => SetField(ref _tooltip, value); }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
+    {
+        if (!EqualityComparer<T>.Default.Equals(field, value))
+        {
+            field = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
+    }
+}
+
+[DataContract]
+internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly GitHubCopilotService _service;
+    private readonly VisualStudioExtensibility _extensibility;
+    private readonly LocalStorageService _storage;
 
     // Under GitHub's AI Credits billing model, 1 AI credit costs $0.01 USD.
     private const double CreditCostUsd = 0.01;
+    private const double PremiumUsageAlertThreshold = 85;
+
+    private readonly List<LocalSnapshot> _snapshotHistory;
+    private InsightsSettings _settings;
+    private CopilotUserData? _latestData;
+    private CancellationTokenSource? _pollingCts;
+    private readonly object _pollingGate = new();
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
 
     private bool _isLoading = true;
     private bool _hasError;
@@ -114,40 +147,182 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged
     [DataMember] public string WorkdayValue { get => _workdayValue; set => SetField(ref _workdayValue, value); }
     [DataMember] public bool HasPacing { get => _hasPacing; set => SetField(ref _hasPacing, value); }
 
+    // Usage trend: snapshot chart + delta comparisons
+    private bool _hasUsageTrend;
+    private bool _hasChart;
+    private bool _hasComparisons;
+    private bool _hasSinceLastRefresh;
+    private bool _hasSinceYesterday;
+    private string _sinceLastRefreshDisplay = string.Empty;
+    private string _sinceYesterdayDisplay = string.Empty;
+
+    [DataMember] public bool HasUsageTrend { get => _hasUsageTrend; set => SetField(ref _hasUsageTrend, value); }
+    [DataMember] public bool HasChart { get => _hasChart; set => SetField(ref _hasChart, value); }
+    [DataMember] public bool HasComparisons { get => _hasComparisons; set => SetField(ref _hasComparisons, value); }
+    [DataMember] public bool HasSinceLastRefresh { get => _hasSinceLastRefresh; set => SetField(ref _hasSinceLastRefresh, value); }
+    [DataMember] public bool HasSinceYesterday { get => _hasSinceYesterday; set => SetField(ref _hasSinceYesterday, value); }
+    [DataMember] public string SinceLastRefreshDisplay { get => _sinceLastRefreshDisplay; set => SetField(ref _sinceLastRefreshDisplay, value); }
+    [DataMember] public string SinceYesterdayDisplay { get => _sinceYesterdayDisplay; set => SetField(ref _sinceYesterdayDisplay, value); }
+
+    [DataMember]
+    public ObservableCollection<ChartBarViewModel> ChartBars { get; } = [];
+
+    // Weighted prediction
+    private bool _hasPrediction;
+    private string _predictedDailyUsageDisplay = string.Empty;
+    private string _predictionConfidenceLabel = string.Empty;
+    private string _predictionConfidenceReason = string.Empty;
+    private string _predictionDailyCost = string.Empty;
+    private string _predictionMonthlyCost = string.Empty;
+    private bool _hasExhaustion;
+    private string _daysUntilExhaustionDisplay = string.Empty;
+    private string _sustainabilityDisplay = string.Empty;
+
+    [DataMember] public bool HasPrediction { get => _hasPrediction; set => SetField(ref _hasPrediction, value); }
+    [DataMember] public string PredictedDailyUsageDisplay { get => _predictedDailyUsageDisplay; set => SetField(ref _predictedDailyUsageDisplay, value); }
+    [DataMember] public string PredictionConfidenceLabel { get => _predictionConfidenceLabel; set => SetField(ref _predictionConfidenceLabel, value); }
+    [DataMember] public string PredictionConfidenceReason { get => _predictionConfidenceReason; set => SetField(ref _predictionConfidenceReason, value); }
+    [DataMember] public string PredictionDailyCost { get => _predictionDailyCost; set => SetField(ref _predictionDailyCost, value); }
+    [DataMember] public string PredictionMonthlyCost { get => _predictionMonthlyCost; set => SetField(ref _predictionMonthlyCost, value); }
+    [DataMember] public bool HasExhaustion { get => _hasExhaustion; set => SetField(ref _hasExhaustion, value); }
+    [DataMember] public string DaysUntilExhaustionDisplay { get => _daysUntilExhaustionDisplay; set => SetField(ref _daysUntilExhaustionDisplay, value); }
+    [DataMember] public string SustainabilityDisplay { get => _sustainabilityDisplay; set => SetField(ref _sustainabilityDisplay, value); }
+
+    // Burn-rate / trend analysis
+    private bool _hasBurnRate;
+    private string _recentBurnRateDisplay = string.Empty;
+    private string _overallBurnRateDisplay = string.Empty;
+    private string _projectedMonthlyCostDisplay = string.Empty;
+    private string _trendIndicatorDisplay = string.Empty;
+
+    [DataMember] public bool HasBurnRate { get => _hasBurnRate; set => SetField(ref _hasBurnRate, value); }
+    [DataMember] public string RecentBurnRateDisplay { get => _recentBurnRateDisplay; set => SetField(ref _recentBurnRateDisplay, value); }
+    [DataMember] public string OverallBurnRateDisplay { get => _overallBurnRateDisplay; set => SetField(ref _overallBurnRateDisplay, value); }
+    [DataMember] public string ProjectedMonthlyCostDisplay { get => _projectedMonthlyCostDisplay; set => SetField(ref _projectedMonthlyCostDisplay, value); }
+    [DataMember] public string TrendIndicatorDisplay { get => _trendIndicatorDisplay; set => SetField(ref _trendIndicatorDisplay, value); }
+
+    // Settings + export status
+    private string _customCreditLimitInput = string.Empty;
+    private string _pollingIntervalInput = string.Empty;
+    private string _settingsStatus = string.Empty;
+    private string _exportStatus = string.Empty;
+
+    [DataMember] public string CustomCreditLimitInput { get => _customCreditLimitInput; set => SetField(ref _customCreditLimitInput, value); }
+    [DataMember] public string PollingIntervalInput { get => _pollingIntervalInput; set => SetField(ref _pollingIntervalInput, value); }
+    [DataMember] public string SettingsStatus { get => _settingsStatus; set => SetField(ref _settingsStatus, value); }
+    [DataMember] public string ExportStatus { get => _exportStatus; set => SetField(ref _exportStatus, value); }
+
     [DataMember]
     public ObservableCollection<QuotaCardViewModel> Quotas { get; } = [];
 
     [DataMember]
     public IAsyncCommand RefreshCommand { get; }
 
-    public CopilotInsightsViewModel(GitHubCopilotService service)
+    [DataMember]
+    public IAsyncCommand CopyMarkdownCommand { get; }
+
+    [DataMember]
+    public IAsyncCommand CopyJsonCommand { get; }
+
+    [DataMember]
+    public IAsyncCommand SaveSettingsCommand { get; }
+
+    [DataMember]
+    public IAsyncCommand ResetSettingsCommand { get; }
+
+    public CopilotInsightsViewModel(
+        GitHubCopilotService service,
+        VisualStudioExtensibility extensibility,
+        LocalStorageService storage)
     {
         _service = service;
-        RefreshCommand = new AsyncCommand(OnRefreshAsync);
-        _ = OnRefreshAsync(null, CancellationToken.None);
+        _extensibility = extensibility;
+        _storage = storage;
+        _snapshotHistory = storage.LoadSnapshots();
+        _settings = storage.LoadSettings();
+
+        RefreshCommand = new AsyncCommand((_, ct) => RefreshAsync(silent: false, ct));
+        CopyMarkdownCommand = new AsyncCommand(OnCopyMarkdownAsync);
+        CopyJsonCommand = new AsyncCommand(OnCopyJsonAsync);
+        SaveSettingsCommand = new AsyncCommand(OnSaveSettingsAsync);
+        ResetSettingsCommand = new AsyncCommand(OnResetSettingsAsync);
+
+        SyncSettingsInputs();
+        _ = RefreshAsync(silent: false, CancellationToken.None);
+        RestartPolling();
     }
 
-    private async Task OnRefreshAsync(object? parameter, CancellationToken cancellationToken)
+    private async Task RefreshAsync(bool silent, CancellationToken cancellationToken)
     {
-        IsLoading = true;
-        HasError = false;
-        HasData = false;
-        ErrorMessage = string.Empty;
+        // Serialize refreshes so a background poll and a manual refresh never mutate the
+        // bound collections concurrently. A busy silent poll is simply skipped.
+        if (silent)
+        {
+            if (!await _refreshGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+        }
+        else
+        {
+            await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
 
         try
         {
-            CopilotUserData data = await _service.GetCopilotUserDataAsync(cancellationToken);
-            PopulateFromData(data);
-            HasData = true;
-        }
-        catch (Exception ex)
-        {
-            HasError = true;
-            ErrorMessage = ex.Message;
+            if (!silent)
+            {
+                IsLoading = true;
+                HasError = false;
+                HasData = false;
+                ErrorMessage = string.Empty;
+            }
+
+            try
+            {
+                CopilotUserData data = await _service.GetCopilotUserDataAsync(cancellationToken);
+                _latestData = data;
+                RecordSnapshot(data);
+                PopulateFromData(data);
+                HasError = false;
+                ErrorMessage = string.Empty;
+                HasData = true;
+            }
+            catch (Exception ex)
+            {
+                if (!silent)
+                {
+                    HasError = true;
+                    ErrorMessage = ex.Message;
+                }
+            }
+            finally
+            {
+                if (!silent)
+                {
+                    IsLoading = false;
+                }
+            }
         }
         finally
         {
-            IsLoading = false;
+            _refreshGate.Release();
+        }
+    }
+
+    private void RecordSnapshot(CopilotUserData data)
+    {
+        QuotaSnapshot? premium = data.QuotaSnapshots?.Values
+            .FirstOrDefault(q => q.QuotaId == "premium_interactions");
+
+        if (premium is null || premium.Unlimited)
+        {
+            return;
+        }
+
+        if (UsageAnalytics.AddSnapshot(_snapshotHistory, premium.Remaining, premium.Entitlement))
+        {
+            _storage.SaveSnapshots(_snapshotHistory);
         }
     }
 
@@ -190,8 +365,12 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged
 
         QuotaSnapshot? premiumQuota = null;
 
-        foreach (QuotaSnapshot quota in sorted)
+        foreach (QuotaSnapshot rawQuota in sorted)
         {
+            QuotaSnapshot quota = rawQuota.QuotaId == "premium_interactions"
+                ? GetEffectiveQuota(rawQuota, _settings.CustomCreditLimit)
+                : rawQuota;
+
             string name = FormatQuotaName(quota.QuotaId);
             var card = new QuotaCardViewModel { Name = name };
 
@@ -338,6 +517,384 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged
             ResetDateDisplay = string.Empty;
             HasPacing = false;
         }
+
+        PopulateAnalytics(premiumQuota, resetDateUtc);
+        MaybeNotifyPremiumUsage(data, premiumQuota);
+    }
+
+    private void PopulateAnalytics(QuotaSnapshot? effectivePremium, DateTime? resetDateUtc)
+    {
+        // Delta comparisons
+        SnapshotComparison comparison = UsageAnalytics.GetComparisons(_snapshotHistory);
+
+        HasSinceLastRefresh = comparison.SinceLastRefresh is not null;
+        SinceLastRefreshDisplay = FormatDelta(comparison.SinceLastRefresh);
+
+        HasSinceYesterday = comparison.SinceYesterday is not null;
+        SinceYesterdayDisplay = FormatDelta(comparison.SinceYesterday);
+
+        HasComparisons = HasSinceLastRefresh || HasSinceYesterday;
+
+        // Trend chart
+        BuildChart();
+
+        HasUsageTrend = HasChart || HasComparisons;
+
+        // Weighted prediction
+        double? effectiveRemaining = effectivePremium is { Unlimited: false } p ? p.Remaining : null;
+        WeightedPrediction? prediction = UsageAnalytics.GetWeightedPrediction(_snapshotHistory, effectiveRemaining, resetDateUtc);
+        if (prediction is not null)
+        {
+            HasPrediction = true;
+            PredictedDailyUsageDisplay = prediction.PredictedDailyUsage.ToString(CultureInfo.InvariantCulture);
+            PredictionConfidenceLabel = prediction.Confidence switch
+            {
+                "high" => "High Accuracy",
+                "medium" => "Medium Accuracy",
+                _ => "Low Accuracy",
+            };
+            PredictionConfidenceReason = prediction.ConfidenceReason;
+            PredictionDailyCost = $"~${prediction.PredictedDailyUsage * CreditCostUsd:F2}/day";
+            PredictionMonthlyCost = $"~${prediction.PredictedDailyUsage * CreditCostUsd * 30:F2}";
+            HasExhaustion = prediction.DaysUntilExhaustion is not null;
+            DaysUntilExhaustionDisplay = prediction.DaysUntilExhaustion is { } days ? $"{days} days" : string.Empty;
+            SustainabilityDisplay = prediction.WillExhaustBeforeReset
+                ? "\u26A0 May exhaust before reset"
+                : "\u2713 On track for reset";
+        }
+        else
+        {
+            HasPrediction = false;
+        }
+
+        // Burn-rate / trend analysis
+        TrendPrediction? trend = UsageAnalytics.GetTrendPrediction(_snapshotHistory);
+        if (trend is not null)
+        {
+            HasBurnRate = true;
+            RecentBurnRateDisplay = $"{trend.RecentBurnRate} credits/day (~${trend.RecentBurnRate * CreditCostUsd:F2}/day)";
+            OverallBurnRateDisplay = $"{trend.OverallBurnRate} credits/day (~${trend.OverallBurnRate * CreditCostUsd:F2}/day)";
+            ProjectedMonthlyCostDisplay = $"~${trend.RecentBurnRate * CreditCostUsd * 30:F2}";
+            TrendIndicatorDisplay = trend.TrendIndicator;
+        }
+        else
+        {
+            HasBurnRate = false;
+        }
+    }
+
+    private void BuildChart()
+    {
+        ChartBars.Clear();
+
+        const int maxBars = 30;
+        const double maxHeight = 56;
+
+        List<LocalSnapshot> valid = _snapshotHistory.Where(s => s.PremiumEntitlement > 0).ToList();
+        if (valid.Count < 2)
+        {
+            HasChart = false;
+            return;
+        }
+
+        // _snapshotHistory is newest-first; take the most recent bars oldest-to-newest.
+        List<LocalSnapshot> recent = valid.Take(maxBars).Reverse().ToList();
+
+        double minV = recent.Min(s => s.PremiumRemaining);
+        double maxV = recent.Max(s => s.PremiumRemaining);
+        double range = maxV - minV;
+        if (range == 0)
+        {
+            range = 1;
+        }
+
+        double yMin = minV - range * 0.1;
+        double yMax = maxV + range * 0.1;
+        double yRange = yMax - yMin;
+        if (yRange == 0)
+        {
+            yRange = 1;
+        }
+
+        foreach (LocalSnapshot snapshot in recent)
+        {
+            double normalized = (snapshot.PremiumRemaining - yMin) / yRange;
+            double height = Math.Clamp(normalized * maxHeight, 1, maxHeight);
+            ChartBars.Add(new ChartBarViewModel
+            {
+                Height = height,
+                Tooltip = $"{Format(snapshot.PremiumRemaining)} credits \u00B7 {FormatSnapshotTime(snapshot.Timestamp)}",
+            });
+        }
+
+        HasChart = true;
+    }
+
+    private void MaybeNotifyPremiumUsage(CopilotUserData data, QuotaSnapshot? effectivePremium)
+    {
+        if (effectivePremium is null || effectivePremium.Unlimited || effectivePremium.Entitlement <= 0)
+        {
+            return;
+        }
+
+        double used = effectivePremium.Entitlement - effectivePremium.QuotaRemaining;
+        double percentUsed = Math.Round(used / effectivePremium.Entitlement * 100, 1);
+
+        double planEntitlement = data.QuotaSnapshots?.Values
+            .FirstOrDefault(q => q.QuotaId == "premium_interactions")?.Entitlement
+            ?? effectivePremium.Entitlement;
+        bool hasCustomLimit = effectivePremium.Entitlement > planEntitlement;
+        string quotaLabel = hasCustomLimit ? "custom limit" : "monthly quota";
+
+        string resetDate = data.QuotaResetDateUtc ?? string.Empty;
+        string? lastNotified = _storage.GetLastNotifiedReset();
+
+        if (percentUsed >= PremiumUsageAlertThreshold && lastNotified != resetDate)
+        {
+            string message = $"Copilot AI Credits are at {Format(percentUsed)}% of your {quotaLabel}.";
+            _ = ShowAlertAsync(message);
+            _storage.SetLastNotifiedReset(resetDate);
+        }
+        else if (!string.IsNullOrEmpty(lastNotified) && lastNotified != resetDate && percentUsed < PremiumUsageAlertThreshold)
+        {
+            _storage.SetLastNotifiedReset(null);
+        }
+    }
+
+    private async Task ShowAlertAsync(string message)
+    {
+        try
+        {
+            await _extensibility.Shell().ShowPromptAsync(message, PromptOptions.WarningConfirm, CancellationToken.None);
+        }
+        catch
+        {
+            // Notifications are best-effort.
+        }
+    }
+
+    private async Task OnCopyMarkdownAsync(object? parameter, CancellationToken cancellationToken)
+    {
+        if (_latestData is null)
+        {
+            ExportStatus = "No data to export yet.";
+            return;
+        }
+
+        string markdown = MarkdownExporter.BuildMarkdown(_latestData, _settings.CustomCreditLimit);
+        ExportStatus = ClipboardHelper.SetText(markdown)
+            ? "Markdown summary copied to clipboard."
+            : "Could not access the clipboard.";
+
+        await Task.CompletedTask;
+    }
+
+    private async Task OnCopyJsonAsync(object? parameter, CancellationToken cancellationToken)
+    {
+        if (_latestData is null)
+        {
+            ExportStatus = "No data to export yet.";
+            return;
+        }
+
+        string json = MarkdownExporter.BuildJson(_latestData);
+        ExportStatus = ClipboardHelper.SetText(json)
+            ? "Raw JSON copied to clipboard."
+            : "Could not access the clipboard.";
+
+        await Task.CompletedTask;
+    }
+
+    private async Task OnSaveSettingsAsync(object? parameter, CancellationToken cancellationToken)
+    {
+        double customLimit = 0;
+        if (!string.IsNullOrWhiteSpace(CustomCreditLimitInput)
+            && (!double.TryParse(CustomCreditLimitInput.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out customLimit) || customLimit < 0))
+        {
+            SettingsStatus = "Custom credit limit must be a non-negative number.";
+            return;
+        }
+
+        int pollingSeconds = InsightsSettings.DefaultPollingIntervalSeconds;
+        if (!string.IsNullOrWhiteSpace(PollingIntervalInput)
+            && (!int.TryParse(PollingIntervalInput.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out pollingSeconds) || pollingSeconds < 0))
+        {
+            SettingsStatus = "Auto-refresh interval must be 0 or a positive whole number of seconds.";
+            return;
+        }
+
+        _settings = new InsightsSettings
+        {
+            CustomCreditLimit = customLimit,
+            PollingIntervalSeconds = NormalizePollingIntervalSeconds(pollingSeconds),
+        };
+        _storage.SaveSettings(_settings);
+        SyncSettingsInputs();
+        SettingsStatus = "Settings saved.";
+
+        RestartPolling();
+
+        await RepopulateAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task OnResetSettingsAsync(object? parameter, CancellationToken cancellationToken)
+    {
+        _settings = new InsightsSettings();
+        _storage.SaveSettings(_settings);
+        SyncSettingsInputs();
+        SettingsStatus = "Settings reset to defaults.";
+
+        RestartPolling();
+
+        await RepopulateAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Re-applies the current settings to the latest data under the refresh gate.</summary>
+    private async Task RepopulateAsync(CancellationToken cancellationToken)
+    {
+        if (_latestData is null)
+        {
+            return;
+        }
+
+        await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_latestData is { } data)
+            {
+                PopulateFromData(data);
+            }
+        }
+        finally
+        {
+            _refreshGate.Release();
+        }
+    }
+
+    private void SyncSettingsInputs()
+    {
+        CustomCreditLimitInput = _settings.CustomCreditLimit > 0
+            ? _settings.CustomCreditLimit.ToString("0.##", CultureInfo.InvariantCulture)
+            : "0";
+        PollingIntervalInput = _settings.PollingIntervalSeconds.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private void RestartPolling()
+    {
+        CancellationToken token;
+        lock (_pollingGate)
+        {
+            _pollingCts?.Cancel();
+            _pollingCts?.Dispose();
+            _pollingCts = null;
+
+            int seconds = NormalizePollingIntervalSeconds(_settings.PollingIntervalSeconds);
+            if (seconds <= 0)
+            {
+                return;
+            }
+
+            var cts = new CancellationTokenSource();
+            _pollingCts = cts;
+            token = cts.Token;
+            _ = PollLoopAsync(seconds, token);
+        }
+    }
+
+    private async Task PollLoopAsync(int seconds, CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(seconds), token);
+                if (token.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                await RefreshAsync(silent: true, token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on disposal or settings change.
+        }
+    }
+
+    private static int NormalizePollingIntervalSeconds(int value)
+    {
+        if (value <= 0)
+        {
+            return 0;
+        }
+
+        return Math.Max(1, value);
+    }
+
+    private static QuotaSnapshot GetEffectiveQuota(QuotaSnapshot quota, double customLimit)
+    {
+        double planEntitlement = quota.Entitlement;
+        double used = Math.Max(0, planEntitlement - quota.QuotaRemaining);
+
+        if (customLimit > planEntitlement)
+        {
+            double effectiveRemaining = customLimit - used;
+            return new QuotaSnapshot
+            {
+                QuotaId = quota.QuotaId,
+                TimestampUtc = quota.TimestampUtc,
+                Entitlement = customLimit,
+                QuotaRemaining = effectiveRemaining,
+                Remaining = effectiveRemaining,
+                PercentRemaining = quota.PercentRemaining,
+                Unlimited = quota.Unlimited,
+                OveragePermitted = quota.OveragePermitted,
+                OverageCount = quota.OverageCount,
+            };
+        }
+
+        return quota;
+    }
+
+    private static string FormatDelta(double? delta)
+    {
+        if (delta is not { } value)
+        {
+            return string.Empty;
+        }
+
+        if (value == 0)
+        {
+            return "No change";
+        }
+
+        return value > 0
+            ? $"\u25B2 +{Format(value)} credits"
+            : $"\u25BC {Format(value)} credits";
+    }
+
+    private static string FormatSnapshotTime(string timestamp)
+    {
+        if (DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTimeOffset parsed))
+        {
+            return parsed.ToLocalTime().ToString("MMM d, h:mm tt", CultureInfo.InvariantCulture);
+        }
+
+        return timestamp;
+    }
+
+    public void Dispose()
+    {
+        lock (_pollingGate)
+        {
+            _pollingCts?.Cancel();
+            _pollingCts?.Dispose();
+            _pollingCts = null;
+        }
+
+        // _refreshGate is intentionally not disposed: a poll task may still be releasing it,
+        // and SemaphoreSlim only requires disposal when its AvailableWaitHandle is used (it isn't).
     }
 
     private static string NormalizePlan(string plan)

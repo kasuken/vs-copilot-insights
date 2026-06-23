@@ -27,5 +27,6 @@ internal class ExtensionEntrypoint : Extension
         base.InitializeServices(serviceCollection);
 
         serviceCollection.AddSingleton<GitHubCopilotService>();
+        serviceCollection.AddSingleton<LocalStorageService>();
     }
 }

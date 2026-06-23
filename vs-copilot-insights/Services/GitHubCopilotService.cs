@@ -36,8 +36,10 @@ internal sealed class GitHubCopilotService
         }
 
         string json = await response.Content.ReadAsStringAsync(cancellationToken);
-        return JsonSerializer.Deserialize<CopilotUserData>(json)
+        CopilotUserData data = JsonSerializer.Deserialize<CopilotUserData>(json)
             ?? throw new InvalidOperationException("Failed to deserialize Copilot user data.");
+        data.RawJson = json;
+        return data;
     }
 
     private static async Task<string?> GetGitHubTokenAsync(CancellationToken cancellationToken)
