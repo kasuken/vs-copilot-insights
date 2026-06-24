@@ -23,9 +23,9 @@ internal static class ClipboardHelper
         };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        thread.Join(TimeSpan.FromSeconds(5));
+        bool finished = thread.Join(TimeSpan.FromSeconds(5));
 
-        return success;
+        return finished && success;
     }
 
     private static bool TrySetText(string text)

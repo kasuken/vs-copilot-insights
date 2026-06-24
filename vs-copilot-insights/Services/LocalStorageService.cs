@@ -99,7 +99,9 @@ internal sealed class LocalStorageService
         try
         {
             Directory.CreateDirectory(_directory);
-            File.WriteAllText(path, JsonSerializer.Serialize(value, s_jsonOptions));
+            string tmp = path + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(value, s_jsonOptions));
+            File.Move(tmp, path, overwrite: true);
         }
         catch
         {

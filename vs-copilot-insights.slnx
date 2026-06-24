@@ -1,3 +1,6 @@
 <Solution>
-  <Project Path="vs-copilot-insights/vs-copilot-insights.csproj" />
+  <Project Path="vs-copilot-insights/vs-copilot-insights.csproj">
+    <BuildType Project="Debug" />
+    <Deploy Solution="Release|*" />
+  </Project>
 </Solution>

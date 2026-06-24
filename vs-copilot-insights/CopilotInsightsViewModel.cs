@@ -1,7 +1,5 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using Microsoft.VisualStudio.Extensibility;
 using Microsoft.VisualStudio.Extensibility.Shell;
@@ -12,7 +10,7 @@ using vs_copilot_insights.Services;
 namespace vs_copilot_insights;
 
 [DataContract]
-internal sealed class QuotaCardViewModel : INotifyPropertyChanged
+internal sealed class QuotaCardViewModel : NotifyPropertyChangedBase
 {
     private string _name = string.Empty;
     private string _statusEmoji = string.Empty;
@@ -66,20 +64,10 @@ internal sealed class QuotaCardViewModel : INotifyPropertyChanged
     [DataMember] public string PremiumUsed { get => _premiumUsed; set => SetField(ref _premiumUsed, value); }
     [DataMember] public string PremiumTotal { get => _premiumTotal; set => SetField(ref _premiumTotal, value); }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    private void SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
-    {
-        if (!EqualityComparer<T>.Default.Equals(field, value))
-        {
-            field = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        }
-    }
 }
 
 [DataContract]
-internal sealed class ChartBarViewModel : INotifyPropertyChanged
+internal sealed class ChartBarViewModel : NotifyPropertyChangedBase
 {
     private double _height;
     private string _tooltip = string.Empty;
@@ -87,20 +75,10 @@ internal sealed class ChartBarViewModel : INotifyPropertyChanged
     [DataMember] public double Height { get => _height; set => SetField(ref _height, value); }
     [DataMember] public string Tooltip { get => _tooltip; set => SetField(ref _tooltip, value); }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    private void SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
-    {
-        if (!EqualityComparer<T>.Default.Equals(field, value))
-        {
-            field = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        }
-    }
 }
 
 [DataContract]
-internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDisposable
+internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDisposable
 {
     private readonly GitHubCopilotService _service;
     private readonly VisualStudioExtensibility _extensibility;
@@ -109,11 +87,26 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
     // Under GitHub's AI Credits billing model, 1 AI credit costs $0.01 USD.
     private const double CreditCostUsd = 0.01;
     private const double PremiumUsageAlertThreshold = 85;
+    private const string PremiumQuotaId = QuotaDisplayFormatter.PremiumQuotaId;
+    private const int WorkingHoursPerDay = 8;
+    private const double EfficientModelCostMultiplier = 0.33;
+    private const double AdvancedModelCostMultiplier = 3.0;
+    private const int DaysPerMonth = 30;
+
+    private readonly record struct PacingBudget(
+        long Daily,
+        long Weekly,
+        long PerWorkday,
+        long PerHour,
+        long BudgetEfficient,
+        long BudgetStandard,
+        long BudgetAdvanced);
 
     private readonly List<LocalSnapshot> _snapshotHistory;
     private InsightsSettings _settings;
     private CopilotUserData? _latestData;
     private CancellationTokenSource? _pollingCts;
+    private readonly CancellationTokenSource _initialLoadCts = new();
     private readonly object _pollingGate = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
 
@@ -248,7 +241,7 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
         ResetSettingsCommand = new AsyncCommand(OnResetSettingsAsync);
 
         SyncSettingsInputs();
-        _ = RefreshAsync(silent: false, CancellationToken.None);
+        _ = RefreshAsync(silent: false, _initialLoadCts.Token);
         RestartPolling();
     }
 
@@ -313,7 +306,7 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
     private void RecordSnapshot(CopilotUserData data)
     {
         QuotaSnapshot? premium = data.QuotaSnapshots?.Values
-            .FirstOrDefault(q => q.QuotaId == "premium_interactions");
+            .FirstOrDefault(q => q.QuotaId == PremiumQuotaId);
 
         if (premium is null || premium.Unlimited)
         {
@@ -338,7 +331,7 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
         }
 
         // Plan details
-        PlanValue = string.IsNullOrWhiteSpace(data.CopilotPlan) ? "Unknown" : NormalizePlan(data.CopilotPlan);
+        PlanValue = string.IsNullOrWhiteSpace(data.CopilotPlan) ? "Unknown" : QuotaDisplayFormatter.NormalizePlan(data.CopilotPlan);
         ChatValue = data.ChatEnabled ? "Enabled" : "Disabled";
         SkuValue = string.IsNullOrWhiteSpace(data.AccessTypeSku) ? "N/A" : data.AccessTypeSku;
 
@@ -358,20 +351,20 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
         Quotas.Clear();
         Dictionary<string, QuotaSnapshot> snapshots = data.QuotaSnapshots ?? [];
 
-        // Sort so premium_interactions comes first
+        // Sort so premium quota comes first
         var sorted = snapshots.Values
-            .OrderByDescending(q => q.QuotaId == "premium_interactions")
+            .OrderByDescending(q => q.QuotaId == PremiumQuotaId)
             .ThenBy(q => q.QuotaId);
 
         QuotaSnapshot? premiumQuota = null;
 
         foreach (QuotaSnapshot rawQuota in sorted)
         {
-            QuotaSnapshot quota = rawQuota.QuotaId == "premium_interactions"
+            QuotaSnapshot quota = rawQuota.QuotaId == PremiumQuotaId
                 ? GetEffectiveQuota(rawQuota, _settings.CustomCreditLimit)
                 : rawQuota;
 
-            string name = FormatQuotaName(quota.QuotaId);
+            string name = QuotaDisplayFormatter.FormatQuotaName(quota.QuotaId);
             var card = new QuotaCardViewModel { Name = name };
 
             if (quota.Unlimited)
@@ -397,72 +390,56 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
                 double overAmount = isOver ? Math.Abs(quota.Remaining) : 0;
                 card.IsOverQuota = isOver;
                 card.IsLimited = true;
-                (card.StatusEmoji, card.StatusLabel) = GetStatusBadge(percentRemaining);
+                (card.StatusEmoji, card.StatusLabel) = QuotaDisplayFormatter.GetStatusBadge(percentRemaining);
                 card.ProgressValue = Math.Clamp(percentRemaining, 0, 100);
 
                 if (isOver)
                 {
-                    card.UsageDisplay = $"{Format(used)} / {Format(quota.Entitlement)} used";
+                    card.UsageDisplay = $"{QuotaDisplayFormatter.Format(used)} / {QuotaDisplayFormatter.Format(quota.Entitlement)} used";
                     card.PercentDisplay = $"{percentUsed}% used";
                     double billableOverage = Math.Max(0, used - quota.Entitlement);
                     double estimatedCost = billableOverage * CreditCostUsd;
-                    card.OverageDisplay = $"Over by {Format(overAmount)} credits" +
+                    card.OverageDisplay = $"Over by {QuotaDisplayFormatter.Format(overAmount)} credits" +
                         (quota.OveragePermitted
                             ? $" (est. cost: ${estimatedCost:F2})"
                             : " (overage NOT permitted)");
                 }
                 else
                 {
-                    card.UsageDisplay = $"{Format(quota.QuotaRemaining)} / {Format(quota.Entitlement)} remaining";
+                    card.UsageDisplay = $"{QuotaDisplayFormatter.Format(quota.QuotaRemaining)} / {QuotaDisplayFormatter.Format(quota.Entitlement)} remaining";
                     card.PercentDisplay = $"{percentRemaining}% remaining";
                 }
 
-                if (quota.QuotaId == "premium_interactions")
+                if (quota.QuotaId == PremiumQuotaId)
                 {
                     premiumQuota = quota;
                     card.ShowPremiumStats = true;
-                    card.PremiumMood = GetMood(percentRemaining);
+                    card.PremiumMood = QuotaDisplayFormatter.GetMood(percentRemaining);
                     card.PremiumRemainingPercent = $"{Math.Max(0, percentRemaining)}% remaining";
-                    card.PremiumRemaining = Format(Math.Max(quota.QuotaRemaining, 0));
-                    card.PremiumUsed = Format(used);
-                    card.PremiumTotal = Format(quota.Entitlement);
+                    card.PremiumRemaining = QuotaDisplayFormatter.Format(Math.Max(quota.QuotaRemaining, 0));
+                    card.PremiumUsed = QuotaDisplayFormatter.Format(used);
+                    card.PremiumTotal = QuotaDisplayFormatter.Format(quota.Entitlement);
 
                     if (timeUntilReset is { } diff && resetDateUtc is { } resetAt && diff.TotalDays > 0)
                     {
-                        double totalDays = diff.TotalDays;
-                        double remaining = Math.Max(quota.QuotaRemaining, 0);
-
-                        long allowedPerDay = (long)Math.Floor(remaining / totalDays);
-                        double weeksRemaining = Math.Max(1, totalDays / 7.0);
-                        long allowedPerWeek = (long)Math.Floor(remaining / weeksRemaining);
-                        long workingDays = (long)Math.Floor(totalDays * 5.0 / 7.0);
-                        long allowedPerWorkDay = workingDays > 0 ? (long)Math.Floor(remaining / workingDays) : 0;
-                        long totalWorkingHours = workingDays * 8;
-                        long allowedPerHour = totalWorkingHours > 0 ? (long)Math.Floor(remaining / totalWorkingHours) : 0;
-
-                        long budgetEfficient = (long)Math.Floor(remaining / 0.33 / totalDays);
-                        long budgetStandard = (long)Math.Floor(remaining / totalDays);
-                        long budgetAdvanced = (long)Math.Floor(remaining / 3.0 / totalDays);
-
-                        card.PremiumAllowancePerDay = $"\u2264 {allowedPerDay}/day";
-                        card.PremiumResetIn = FormatResetInShort(diff);
+                        PacingBudget budget = ComputePacingBudget(Math.Max(quota.QuotaRemaining, 0), diff.TotalDays);
+                        card.PremiumAllowancePerDay = $"\u2264 {budget.Daily}/day";
+                        card.PremiumResetIn = QuotaDisplayFormatter.FormatResetInShort(diff);
                         card.PremiumResetDate = resetAt.ToLocalTime().ToString("MMM d, yyyy", CultureInfo.InvariantCulture);
-
-                        card.PremiumWeeklyAverage = $"\u2264 {allowedPerWeek}/week";
-                        card.PremiumWorkdayAverage = $"\u2264 {allowedPerWorkDay}/day (Mon-Fri)";
-                        card.PremiumWorkhourAverage = $"\u2264 {allowedPerHour}/hour (9-5)";
-
-                        card.PremiumEfficientCapacity = $"~{budgetEfficient}/day";
-                        card.PremiumStandardCapacity = $"~{budgetStandard}/day";
-                        card.PremiumAdvancedCapacity = $"~{budgetAdvanced}/day";
+                        card.PremiumWeeklyAverage = $"\u2264 {budget.Weekly}/week";
+                        card.PremiumWorkdayAverage = $"\u2264 {budget.PerWorkday}/day (Mon-Fri)";
+                        card.PremiumWorkhourAverage = $"\u2264 {budget.PerHour}/hour (9-5)";
+                        card.PremiumEfficientCapacity = $"~{budget.BudgetEfficient}/day";
+                        card.PremiumStandardCapacity = $"~{budget.BudgetStandard}/day";
+                        card.PremiumAdvancedCapacity = $"~{budget.BudgetAdvanced}/day";
                     }
 
                     double billableOverage = Math.Max(0, used - quota.Entitlement);
                     card.PremiumOveragePolicy = quota.OveragePermitted
                         ? isOver
-                            ? $"Overage permitted ({Format(overAmount)} over, est. cost: ${(billableOverage * CreditCostUsd):F2})"
+                            ? $"Overage permitted ({QuotaDisplayFormatter.Format(overAmount)} over, est. cost: ${(billableOverage * CreditCostUsd):F2})"
                             : quota.OverageCount > 0
-                                ? $"Overage permitted ({Format(quota.OverageCount)} used)"
+                                ? $"Overage permitted ({QuotaDisplayFormatter.Format(quota.OverageCount)} used)"
                                 : "Overage permitted"
                         : "Overage not permitted";
                 }
@@ -472,8 +449,7 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
         }
 
         // Reset timing
-        if (!string.IsNullOrWhiteSpace(data.QuotaResetDateUtc) &&
-            DateTime.TryParse(data.QuotaResetDateUtc, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime resetDate))
+        if (resetDateUtc is { } resetDate)
         {
             TimeSpan diff = resetDate - DateTime.UtcNow;
             if (diff.TotalSeconds > 0)
@@ -492,18 +468,10 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
             // Pacing guidance (only for premium interactions with limited quota)
             if (premiumQuota is not null && !premiumQuota.Unlimited && diff.TotalDays > 0 && premiumQuota.QuotaRemaining > 0)
             {
-                double totalDays = diff.TotalDays;
-                double remaining = premiumQuota.QuotaRemaining;
-
-                long daily = (long)Math.Floor(remaining / totalDays);
-                double weeksRemaining = Math.Max(1, totalDays / 7.0);
-                long weekly = (long)Math.Floor(remaining / weeksRemaining);
-                long workingDays = (long)Math.Floor(totalDays * 5.0 / 7.0);
-                long perWorkday = workingDays > 0 ? (long)Math.Floor(remaining / workingDays) : 0;
-
-                DailyValue = $"\u2264 {daily}/day";
-                WeeklyValue = $"\u2264 {weekly}/week";
-                WorkdayValue = $"\u2264 {perWorkday}/day (Mon-Fri)";
+                PacingBudget budget = ComputePacingBudget(Math.Max(premiumQuota.QuotaRemaining, 0), diff.TotalDays);
+                DailyValue = $"\u2264 {budget.Daily}/day";
+                WeeklyValue = $"\u2264 {budget.Weekly}/week";
+                WorkdayValue = $"\u2264 {budget.PerWorkday}/day (Mon-Fri)";
                 HasPacing = true;
             }
             else
@@ -528,10 +496,10 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
         SnapshotComparison comparison = UsageAnalytics.GetComparisons(_snapshotHistory);
 
         HasSinceLastRefresh = comparison.SinceLastRefresh is not null;
-        SinceLastRefreshDisplay = FormatDelta(comparison.SinceLastRefresh);
+        SinceLastRefreshDisplay = QuotaDisplayFormatter.FormatDelta(comparison.SinceLastRefresh);
 
         HasSinceYesterday = comparison.SinceYesterday is not null;
-        SinceYesterdayDisplay = FormatDelta(comparison.SinceYesterday);
+        SinceYesterdayDisplay = QuotaDisplayFormatter.FormatDelta(comparison.SinceYesterday);
 
         HasComparisons = HasSinceLastRefresh || HasSinceYesterday;
 
@@ -555,7 +523,7 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
             };
             PredictionConfidenceReason = prediction.ConfidenceReason;
             PredictionDailyCost = $"~${prediction.PredictedDailyUsage * CreditCostUsd:F2}/day";
-            PredictionMonthlyCost = $"~${prediction.PredictedDailyUsage * CreditCostUsd * 30:F2}";
+            PredictionMonthlyCost = $"~${prediction.PredictedDailyUsage * CreditCostUsd * DaysPerMonth:F2}";
             HasExhaustion = prediction.DaysUntilExhaustion is not null;
             DaysUntilExhaustionDisplay = prediction.DaysUntilExhaustion is { } days ? $"{days} days" : string.Empty;
             SustainabilityDisplay = prediction.WillExhaustBeforeReset
@@ -574,7 +542,7 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
             HasBurnRate = true;
             RecentBurnRateDisplay = $"{trend.RecentBurnRate} credits/day (~${trend.RecentBurnRate * CreditCostUsd:F2}/day)";
             OverallBurnRateDisplay = $"{trend.OverallBurnRate} credits/day (~${trend.OverallBurnRate * CreditCostUsd:F2}/day)";
-            ProjectedMonthlyCostDisplay = $"~${trend.RecentBurnRate * CreditCostUsd * 30:F2}";
+            ProjectedMonthlyCostDisplay = $"~${trend.RecentBurnRate * CreditCostUsd * DaysPerMonth:F2}";
             TrendIndicatorDisplay = trend.TrendIndicator;
         }
         else
@@ -623,7 +591,7 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
             ChartBars.Add(new ChartBarViewModel
             {
                 Height = height,
-                Tooltip = $"{Format(snapshot.PremiumRemaining)} credits \u00B7 {FormatSnapshotTime(snapshot.Timestamp)}",
+                Tooltip = $"{QuotaDisplayFormatter.Format(snapshot.PremiumRemaining)} credits \u00B7 {QuotaDisplayFormatter.FormatSnapshotTime(snapshot.Timestamp)}",
             });
         }
 
@@ -641,7 +609,7 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
         double percentUsed = Math.Round(used / effectivePremium.Entitlement * 100, 1);
 
         double planEntitlement = data.QuotaSnapshots?.Values
-            .FirstOrDefault(q => q.QuotaId == "premium_interactions")?.Entitlement
+            .FirstOrDefault(q => q.QuotaId == PremiumQuotaId)?.Entitlement
             ?? effectivePremium.Entitlement;
         bool hasCustomLimit = effectivePremium.Entitlement > planEntitlement;
         string quotaLabel = hasCustomLimit ? "custom limit" : "monthly quota";
@@ -651,7 +619,7 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
 
         if (percentUsed >= PremiumUsageAlertThreshold && lastNotified != resetDate)
         {
-            string message = $"Copilot AI Credits are at {Format(percentUsed)}% of your {quotaLabel}.";
+            string message = $"Copilot AI Credits are at {QuotaDisplayFormatter.Format(percentUsed)}% of your {quotaLabel}.";
             _ = ShowAlertAsync(message);
             _storage.SetLastNotifiedReset(resetDate);
         }
@@ -760,10 +728,9 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
         await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_latestData is { } data)
-            {
-                PopulateFromData(data);
-            }
+            // _latestData won't change while we hold _refreshGate;
+            // it is only written inside RefreshAsync, which also acquires the gate.
+            PopulateFromData(_latestData);
         }
         finally
         {
@@ -822,14 +789,21 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
         }
     }
 
-    private static int NormalizePollingIntervalSeconds(int value)
-    {
-        if (value <= 0)
-        {
-            return 0;
-        }
+    private static int NormalizePollingIntervalSeconds(int value) => Math.Max(0, value);
 
-        return Math.Max(1, value);
+    private static PacingBudget ComputePacingBudget(double remaining, double totalDays)
+    {
+        long daily = (long)Math.Floor(remaining / totalDays);
+        double weeksRemaining = Math.Max(1, totalDays / 7.0);
+        long weekly = (long)Math.Floor(remaining / weeksRemaining);
+        long workingDays = (long)Math.Floor(totalDays * 5.0 / 7.0);
+        long perWorkday = workingDays > 0 ? (long)Math.Floor(remaining / workingDays) : 0;
+        long totalWorkingHours = workingDays * WorkingHoursPerDay;
+        long perHour = totalWorkingHours > 0 ? (long)Math.Floor(remaining / totalWorkingHours) : 0;
+        long budgetEfficient = (long)Math.Floor(remaining / EfficientModelCostMultiplier / totalDays);
+        long budgetStandard = (long)Math.Floor(remaining / totalDays);
+        long budgetAdvanced = (long)Math.Floor(remaining / AdvancedModelCostMultiplier / totalDays);
+        return new PacingBudget(daily, weekly, perWorkday, perHour, budgetEfficient, budgetStandard, budgetAdvanced);
     }
 
     private static QuotaSnapshot GetEffectiveQuota(QuotaSnapshot quota, double customLimit)
@@ -847,7 +821,7 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
                 Entitlement = customLimit,
                 QuotaRemaining = effectiveRemaining,
                 Remaining = effectiveRemaining,
-                PercentRemaining = quota.PercentRemaining,
+                PercentRemaining = customLimit > 0 ? effectiveRemaining / customLimit * 100 : 0,
                 Unlimited = quota.Unlimited,
                 OveragePermitted = quota.OveragePermitted,
                 OverageCount = quota.OverageCount,
@@ -857,35 +831,11 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
         return quota;
     }
 
-    private static string FormatDelta(double? delta)
-    {
-        if (delta is not { } value)
-        {
-            return string.Empty;
-        }
-
-        if (value == 0)
-        {
-            return "No change";
-        }
-
-        return value > 0
-            ? $"\u25B2 +{Format(value)} credits"
-            : $"\u25BC {Format(value)} credits";
-    }
-
-    private static string FormatSnapshotTime(string timestamp)
-    {
-        if (DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTimeOffset parsed))
-        {
-            return parsed.ToLocalTime().ToString("MMM d, h:mm tt", CultureInfo.InvariantCulture);
-        }
-
-        return timestamp;
-    }
-
     public void Dispose()
     {
+        _initialLoadCts.Cancel();
+        _initialLoadCts.Dispose();
+
         lock (_pollingGate)
         {
             _pollingCts?.Cancel();
@@ -895,69 +845,5 @@ internal sealed class CopilotInsightsViewModel : INotifyPropertyChanged, IDispos
 
         // _refreshGate is intentionally not disposed: a poll task may still be releasing it,
         // and SemaphoreSlim only requires disposal when its AvailableWaitHandle is used (it isn't).
-    }
-
-    private static string NormalizePlan(string plan)
-    {
-        string trimmed = plan.Trim();
-        return trimmed.Length > 0
-            ? char.ToUpper(trimmed[0]) + trimmed[1..]
-            : trimmed;
-    }
-
-    private static string FormatQuotaName(string quotaId)
-    {
-        return quotaId switch
-        {
-            "premium_interactions" => "AI Credits",
-            "completions" => "Suggestions",
-            _ => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(quotaId.Replace('_', ' ')),
-        };
-    }
-
-    private static (string Emoji, string Label) GetStatusBadge(double percentRemaining)
-    {
-        return percentRemaining switch
-        {
-            <= 0 => ("\U0001F6AB", "Over Quota"),
-            > 50 => ("\U0001F7E2", "Healthy"),
-            >= 20 => ("\U0001F7E1", "Watch"),
-            _ => ("\U0001F534", "Risk"),
-        };
-    }
-
-    private static string GetMood(double percentRemaining)
-    {
-        return percentRemaining switch
-        {
-            <= 0 => "\U0001F480 Over quota",
-            > 75 => "\U0001F60C Plenty of quota left",
-            > 40 => "\U0001F642 You\u2019re fine",
-            > 15 => "\U0001F62C Getting tight",
-            _ => "\U0001F631 Danger zone",
-        };
-    }
-
-    private static string Format(double value)
-    {
-        return value.ToString("0.##", CultureInfo.InvariantCulture);
-    }
-
-    private static string FormatResetInShort(TimeSpan diff)
-    {
-        int days = Math.Max(0, (int)diff.TotalDays);
-        int hours = Math.Max(0, diff.Hours);
-        return $"{days}d {hours}h";
-    }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    private void SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
-    {
-        if (!EqualityComparer<T>.Default.Equals(field, value))
-        {
-            field = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        }
     }
 }

@@ -11,8 +11,8 @@
 
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="BorderBrush" Value="#44808080" />
-            <Setter Property="Background" Value="#16FFFFFF" />
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBorderBrushKey}}" />
+            <Setter Property="Background" Value="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBackgroundBrushKey}}" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="14" />
             <Setter Property="Margin" Value="0,0,0,10" />
@@ -116,7 +116,7 @@
                                                  Height="8"
                                                  Margin="0,0,0,8"
                                                  BorderThickness="0"
-                                                 Background="#22000000" />
+                                                 Background="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBackgroundBrushKey}}" />
 
                                     <StackPanel Visibility="{Binding ShowPremiumStats, Converter={StaticResource BoolToVis}}"
                                                 Margin="0,0,0,8">
@@ -142,7 +142,7 @@
 
                                     <StackPanel Visibility="{Binding ShowPremiumStats, Converter={StaticResource BoolToVis}}"
                                                 Margin="0,10,0,0">
-                                        <Border Height="1" Background="#22FFFFFF" Margin="0,0,0,10" />
+                                        <Border Height="1" Background="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBorderBrushKey}}" Margin="0,0,0,10" />
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
@@ -158,7 +158,7 @@
                                             <TextBlock Grid.Column="1" Margin="0,44,0,0" Text="{Binding PremiumResetDate}" FontWeight="SemiBold" />
                                         </Grid>
 
-                                        <Border Height="1" Background="#22FFFFFF" Margin="0,12,0,10" />
+                                        <Border Height="1" Background="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBorderBrushKey}}" Margin="0,12,0,10" />
                                         <TextBlock Text="Projected AI credits before the reset" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
                                         <Grid>
                                             <Grid.ColumnDefinitions>
@@ -175,7 +175,7 @@
                                             <TextBlock Grid.Column="1" Margin="0,44,0,0" Text="{Binding PremiumWorkhourAverage}" FontWeight="SemiBold" />
                                         </Grid>
 
-                                        <Border Height="1" Background="#22FFFFFF" Margin="0,12,0,10" />
+                                        <Border Height="1" Background="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBorderBrushKey}}" Margin="0,12,0,10" />
                                         <TextBlock Text="Daily Capacity by Model Cost" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" />
                                         <Grid>
                                             <Grid.ColumnDefinitions>
@@ -192,7 +192,7 @@
                                             <TextBlock Grid.Column="1" Margin="0,44,0,0" Text="{Binding PremiumAdvancedCapacity}" FontWeight="SemiBold" />
                                         </Grid>
 
-                                        <Border Height="1" Background="#22FFFFFF" Margin="0,12,0,8" />
+                                        <Border Height="1" Background="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBorderBrushKey}}" Margin="0,12,0,8" />
                                         <TextBlock Text="{Binding PremiumOveragePolicy}" Style="{StaticResource DIM}" />
                                     </StackPanel>
                                 </StackPanel>
@@ -252,7 +252,7 @@
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Border Width="6" Height="56" Margin="1,0,1,0" Background="Transparent">
+                                                <Border Width="6" Height="56" Margin="1,0,1,0" Background="Transparent" ToolTip="{Binding Tooltip}">
                                                     <Border VerticalAlignment="Bottom" Height="{Binding Height}" Background="#3A8DFF" CornerRadius="2" />
                                                 </Border>
                                             </DataTemplate>
@@ -303,7 +303,7 @@
                                 <TextBlock Text="credits/day" Style="{StaticResource DIM}" Margin="6,0,0,3" VerticalAlignment="Bottom" />
                             </StackPanel>
 
-                            <Border Height="1" Background="#22FFFFFF" Margin="0,0,0,10" />
+                            <Border Height="1" Background="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBorderBrushKey}}" Margin="0,0,0,10" />
 
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -369,67 +369,33 @@
                     </Border>
                 </StackPanel>
 
-                <TextBlock Text="EXPORT" Style="{StaticResource SH}" />
+                <TextBlock Text="PLAN DETAILS" Style="{StaticResource SH}" />
                 <Border Style="{StaticResource Card}">
-                    <StackPanel>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="8" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0"
-                                    Command="{Binding CopyMarkdownCommand}"
-                                    Padding="10,7"
-                                    HorizontalContentAlignment="Center"
-                                    Background="#16FFFFFF"
-                                    BorderBrush="#44808080"
-                                    BorderThickness="1"
-                                    Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}">
-                                <TextBlock Text="Copy as Markdown" FontSize="12" />
-                            </Button>
-                            <Button Grid.Column="2"
-                                    Command="{Binding CopyJsonCommand}"
-                                    Padding="10,7"
-                                    HorizontalContentAlignment="Center"
-                                    Background="#16FFFFFF"
-                                    BorderBrush="#44808080"
-                                    BorderThickness="1"
-                                    Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}">
-                                <TextBlock Text="Copy as JSON" FontSize="12" />
-                            </Button>
-                        </Grid>
-                        <TextBlock Text="{Binding ExportStatus}" Style="{StaticResource DIM}" TextWrapping="Wrap" Margin="0,8,0,0" />
-                    </StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="7" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="7" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="7" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Plan" Style="{StaticResource LBL}" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding PlanValue}" Style="{StaticResource VAL}" FontWeight="SemiBold" />
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Chat" Style="{StaticResource LBL}" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ChatValue}" Style="{StaticResource VAL}" />
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="SKU" Style="{StaticResource LBL}" />
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SkuValue}" Style="{StaticResource VAL}" />
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Orgs" Style="{StaticResource LBL}" />
+                        <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding OrgValue}" Style="{StaticResource VAL}" />
+                    </Grid>
                 </Border>
             </StackPanel>
-
-            <TextBlock Text="PLAN DETAILS" Style="{StaticResource SH}" />
-            <Border Style="{StaticResource Card}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="7" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="7" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="7" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Plan" Style="{StaticResource LBL}" />
-                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding PlanValue}" Style="{StaticResource VAL}" FontWeight="SemiBold" />
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Chat" Style="{StaticResource LBL}" />
-                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ChatValue}" Style="{StaticResource VAL}" />
-                    <TextBlock Grid.Row="4" Grid.Column="0" Text="SKU" Style="{StaticResource LBL}" />
-                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SkuValue}" Style="{StaticResource VAL}" />
-                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Orgs" Style="{StaticResource LBL}" />
-                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding OrgValue}" Style="{StaticResource VAL}" />
-                </Grid>
-            </Border>
 
             <TextBlock Text="SETTINGS" Style="{StaticResource SH}" />
             <Border Style="{StaticResource Card}">
@@ -437,16 +403,16 @@
                     <TextBlock Text="Custom AI credit limit (0 = plan default)" Style="{StaticResource DIM}" Margin="0,0,0,4" />
                     <TextBox Text="{Binding CustomCreditLimitInput, Mode=TwoWay}"
                              Padding="6,4"
-                             Background="#22000000"
-                             BorderBrush="#44808080"
+                             Background="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBackgroundBrushKey}}"
+                             BorderBrush="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBorderBrushKey}}"
                              BorderThickness="1"
                              Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}" />
 
                     <TextBlock Text="Auto-refresh interval in seconds (0 = off)" Style="{StaticResource DIM}" Margin="0,12,0,4" />
                     <TextBox Text="{Binding PollingIntervalInput, Mode=TwoWay}"
                              Padding="6,4"
-                             Background="#22000000"
-                             BorderBrush="#44808080"
+                             Background="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBackgroundBrushKey}}"
+                             BorderBrush="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBorderBrushKey}}"
                              BorderThickness="1"
                              Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}" />
 
@@ -460,8 +426,8 @@
                                 Command="{Binding SaveSettingsCommand}"
                                 Padding="10,7"
                                 HorizontalContentAlignment="Center"
-                                Background="#16FFFFFF"
-                                BorderBrush="#44808080"
+                                Background="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBackgroundBrushKey}}"
+                                BorderBrush="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBorderBrushKey}}"
                                 BorderThickness="1"
                                 Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}">
                             <TextBlock Text="Save" FontSize="12" />
@@ -470,8 +436,8 @@
                                 Command="{Binding ResetSettingsCommand}"
                                 Padding="10,7"
                                 HorizontalContentAlignment="Center"
-                                Background="#16FFFFFF"
-                                BorderBrush="#44808080"
+                                Background="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBackgroundBrushKey}}"
+                                BorderBrush="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBorderBrushKey}}"
                                 BorderThickness="1"
                                 Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}">
                             <TextBlock Text="Reset to defaults" FontSize="12" />
@@ -487,8 +453,8 @@
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Center"
                     Margin="0,4,0,0"
-                    Background="#16FFFFFF"
-                    BorderBrush="#44808080"
+                    Background="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBackgroundBrushKey}}"
+                    BorderBrush="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowBorderBrushKey}}"
                     BorderThickness="1"
                     Foreground="{DynamicResource {x:Static colors:EnvironmentColors.ToolWindowTextBrushKey}}">
                 <StackPanel Orientation="Horizontal">

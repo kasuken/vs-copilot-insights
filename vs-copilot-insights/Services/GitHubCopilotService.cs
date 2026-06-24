@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -65,7 +66,19 @@ internal sealed class GitHubCopilotService
 
             return process.ExitCode == 0 ? token.Trim() : null;
         }
-        catch
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Win32Exception)
+        {
+            return null;
+        }
+        catch (FileNotFoundException)
+        {
+            return null;
+        }
+        catch (Exception)
         {
             return null;
         }

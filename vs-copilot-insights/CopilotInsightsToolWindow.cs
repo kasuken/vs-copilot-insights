@@ -11,6 +11,7 @@ internal sealed class CopilotInsightsToolWindow : ToolWindow
     private readonly VisualStudioExtensibility _extensibility;
     private readonly GitHubCopilotService _service;
     private readonly LocalStorageService _storage;
+    private CopilotInsightsControl? _control;
 
     public CopilotInsightsToolWindow(VisualStudioExtensibility extensibility, GitHubCopilotService service, LocalStorageService storage)
         : base(extensibility)
@@ -28,7 +29,18 @@ internal sealed class CopilotInsightsToolWindow : ToolWindow
 
     public override Task<IRemoteUserControl> GetContentAsync(CancellationToken cancellationToken)
     {
-        var viewModel = new CopilotInsightsViewModel(_service, _extensibility, _storage);
-        return Task.FromResult<IRemoteUserControl>(new CopilotInsightsControl(viewModel));
+        _control ??= new CopilotInsightsControl(new CopilotInsightsViewModel(_service, _extensibility, _storage));
+        return Task.FromResult<IRemoteUserControl>(_control);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _control?.Dispose();
+            _control = null;
+        }
+
+        base.Dispose(disposing);
     }
 }
