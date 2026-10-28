@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using vs_copilot_insights.Models;
 
 namespace vs_copilot_insights.Services;
@@ -28,19 +30,19 @@ internal sealed class LocalStorageService
         _statePath = Path.Combine(_directory, "state.json");
     }
 
-    public List<LocalSnapshot> LoadSnapshots()
+    public List<LocalSnapshot> LoadSnapshots(string hostname = "github.com")
     {
         lock (_gate)
         {
-            return ReadJson<List<LocalSnapshot>>(_snapshotsPath) ?? [];
+            return ReadJson<List<LocalSnapshot>>(GetHostPath(_snapshotsPath, hostname)) ?? [];
         }
     }
 
-    public void SaveSnapshots(IReadOnlyList<LocalSnapshot> snapshots)
+    public void SaveSnapshots(IReadOnlyList<LocalSnapshot> snapshots, string hostname = "github.com")
     {
         lock (_gate)
         {
-            WriteJson(_snapshotsPath, snapshots);
+            WriteJson(GetHostPath(_snapshotsPath, hostname), snapshots);
         }
     }
 
@@ -60,20 +62,31 @@ internal sealed class LocalStorageService
         }
     }
 
-    public string? GetLastNotifiedReset()
+    public string? GetLastNotifiedReset(string hostname = "github.com")
     {
         lock (_gate)
         {
-            return ReadJson<StateData>(_statePath)?.LastNotifiedReset;
+            return ReadJson<StateData>(GetHostPath(_statePath, hostname))?.LastNotifiedReset;
         }
     }
 
-    public void SetLastNotifiedReset(string? resetDate)
+    public void SetLastNotifiedReset(string? resetDate, string hostname = "github.com")
     {
         lock (_gate)
         {
-            WriteJson(_statePath, new StateData { LastNotifiedReset = resetDate });
+            WriteJson(GetHostPath(_statePath, hostname), new StateData { LastNotifiedReset = resetDate });
         }
+    }
+
+    private string GetHostPath(string publicPath, string hostname)
+    {
+        if (hostname == "github.com")
+        {
+            return publicPath;
+        }
+
+        string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(hostname)));
+        return Path.Combine(_directory, "hosts", key, Path.GetFileName(publicPath));
     }
 
     private T? ReadJson<T>(string path)
@@ -98,7 +111,7 @@ internal sealed class LocalStorageService
     {
         try
         {
-            Directory.CreateDirectory(_directory);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             string tmp = path + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(value, s_jsonOptions));
             File.Move(tmp, path, overwrite: true);

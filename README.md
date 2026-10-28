@@ -30,6 +30,8 @@ It focuses on practical visibility, not team analytics. It helps answer question
 - Weighted usage prediction (estimated days until exhaustion, confidence, sustainability).
 - Burn-rate / trend analysis (recent vs overall, projected monthly cost).
 - Configurable auto-refresh (background polling) and a custom AI credit limit.
+- GitHub Enterprise Cloud (including data residency) and Enterprise Server host settings.
+- Configurable quota mood and remaining/used progress display, matching the VS Code extension.
 - One-click export of the current snapshot to the clipboard as Markdown or raw JSON.
 - Low-quota alert when AI credit usage crosses 85%.
 - Manual refresh button from inside the tool window.
@@ -104,8 +106,15 @@ The `Settings` card persists locally and lets you configure:
 
 - **Custom AI credit limit** — budget against a custom limit above your plan entitlement (`0` uses the plan default). Progress, prediction, pacing, and alerts then track the custom limit.
 - **Auto-refresh interval (seconds)** — automatically refresh in the background every N seconds (`0` disables polling).
+- **GitHub Enterprise URI** — the HTTPS instance URL, equivalent to VS Code's `github-enterprise.uri`. Leave blank for GitHub.com.
+- **Show quota mood** — show or hide the mood indicator (enabled by default).
+- **Show used quota in progress bars** — switch quota progress and usage labels from remaining (default) to used.
 
-History, settings, and alert state are stored as JSON under `%LOCALAPPDATA%\vs-copilot-insights`. No external service is used.
+The custom credit limit accepts finite values from `0` to `10,000,000`, matching the VS Code setting.
+
+History, settings, and alert state are stored as JSON under `%LOCALAPPDATA%\vs-copilot-insights`. Enterprise history and alert state are isolated by host under `hosts`, while existing GitHub.com history is preserved. Tokens are obtained from GitHub CLI and are never saved in extension settings. No external storage service is used.
+
+Saving a different host clears the previous host's displayed/exportable data and immediately refreshes using the new host. **Reset to defaults** also clears the Enterprise URI, returning to GitHub.com.
 
 ## Requirements
 
@@ -118,16 +127,34 @@ History, settings, and alert state are stored as JSON under `%LOCALAPPDATA%\vs-c
 This extension retrieves your token via:
 
 ```sh
-gh auth token
+gh auth token --hostname github.com
 ```
 
 Before using the extension, authenticate with GitHub CLI:
 
 ```sh
-gh auth login
+gh auth login --hostname github.com
 ```
 
 If `gh` is missing or not authenticated, the extension cannot fetch Copilot data.
+
+### GitHub Enterprise
+
+Sign in to your instance with GitHub CLI, then enter its HTTPS URL in the tool window's **GitHub Enterprise URI** setting and select **Save**:
+
+```sh
+gh auth login --hostname tenant.ghe.com
+```
+
+| Instance URL | API base URL |
+| --- | --- |
+| Blank or `https://github.com` | `https://api.github.com` |
+| `https://tenant.ghe.com` | `https://api.tenant.ghe.com` |
+| `https://github.company.example` | `https://github.company.example/api/v3` |
+
+Use the instance URL, not an API URL. HTTPS is required; credentials, paths (other than `/`), queries, and fragments are rejected. A non-default HTTPS port is supported for self-hosted instances. Invalid settings are reported without changing the saved configuration.
+
+Authentication always explicitly targets the selected instance hostname, including GitHub.com; changing GitHub CLI's default host does not change the extension's selected host. Requests do not follow redirects. Enterprise routing does not guarantee that an instance exposes the internal Copilot endpoint.
 
 ## Installation and Run (Development)
 
@@ -141,7 +168,7 @@ If `gh` is missing or not authenticated, the extension cannot fetch Copilot data
 
 The extension calls:
 
-- `https://api.github.com/copilot_internal/user`
+- `<API base URL>/copilot_internal/user` (by default `https://api.github.com/copilot_internal/user`)
 
 using your local GitHub CLI auth token.
 
@@ -152,8 +179,9 @@ No external service is used by this project to store your Copilot quota data.
 ### Could not obtain a GitHub token
 
 - Ensure GitHub CLI is installed: `gh --version`
-- Ensure you are logged in: `gh auth status`
-- If needed, run: `gh auth login`
+- Ensure you are logged in to the selected host: `gh auth status --hostname github.com`
+- If needed, run: `gh auth login --hostname github.com`
+- For Enterprise, replace `github.com` with the instance hostname configured in Settings.
 
 ### API errors (403/404)
 

@@ -9,7 +9,7 @@ namespace vs_copilot_insights.Services;
 
 internal sealed class GitHubCopilotService
 {
-    private static readonly HttpClient s_httpClient = new()
+    private static readonly HttpClient s_httpClient = new(new HttpClientHandler { AllowAutoRedirect = false })
     {
         DefaultRequestHeaders =
         {
@@ -17,13 +17,14 @@ internal sealed class GitHubCopilotService
         },
     };
 
-    public async Task<CopilotUserData> GetCopilotUserDataAsync(CancellationToken cancellationToken)
+    public async Task<CopilotUserData> GetCopilotUserDataAsync(string? enterpriseUri, CancellationToken cancellationToken)
     {
-        string token = await GetGitHubTokenAsync(cancellationToken)
+        GitHubHostConfiguration host = GitHubHostConfiguration.Parse(enterpriseUri);
+        string token = await GetGitHubTokenAsync(host.Hostname, cancellationToken)
             ?? throw new InvalidOperationException(
-                "Could not obtain a GitHub token. Please ensure the GitHub CLI is installed and you are signed in (run 'gh auth login').");
+                $"Could not obtain a GitHub token for {host.Hostname}. Ensure GitHub CLI is installed and run 'gh auth login --hostname {host.Hostname}'.");
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/copilot_internal/user");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{host.ApiBaseUrl}/copilot_internal/user");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
@@ -31,9 +32,11 @@ internal sealed class GitHubCopilotService
 
         if (!response.IsSuccessStatusCode)
         {
-            string body = await response.Content.ReadAsStringAsync(cancellationToken);
             throw new HttpRequestException(
-                $"GitHub API returned {(int)response.StatusCode} {response.ReasonPhrase}. {body}");
+                $"GitHub API at {host.Hostname} returned {(int)response.StatusCode} {response.ReasonPhrase}. " +
+                (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden
+                    ? $"Check account access and run 'gh auth login --hostname {host.Hostname}'."
+                    : "This instance may not expose the internal Copilot endpoint."));
         }
 
         string json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -43,17 +46,21 @@ internal sealed class GitHubCopilotService
         return data;
     }
 
-    private static async Task<string?> GetGitHubTokenAsync(CancellationToken cancellationToken)
+    private static async Task<string?> GetGitHubTokenAsync(string hostname, CancellationToken cancellationToken)
     {
         try
         {
-            var psi = new ProcessStartInfo("gh", "auth token")
+            var psi = new ProcessStartInfo("gh")
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
+            psi.ArgumentList.Add("auth");
+            psi.ArgumentList.Add("token");
+            psi.ArgumentList.Add("--hostname");
+            psi.ArgumentList.Add(hostname);
 
             using var process = Process.Start(psi);
             if (process is null)
@@ -61,10 +68,24 @@ internal sealed class GitHubCopilotService
                 return null;
             }
 
-            string token = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
+            using var registration = cancellationToken.Register(() =>
+            {
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                }
+                catch (InvalidOperationException) { }
+                catch (Win32Exception) { }
+            });
+            Task<string> output = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            Task<string> error = process.StandardError.ReadToEndAsync(cancellationToken);
+            await Task.WhenAll(output, error, process.WaitForExitAsync(cancellationToken));
+            string token = await output;
 
-            return process.ExitCode == 0 ? token.Trim() : null;
+            return process.ExitCode == 0 && !string.IsNullOrWhiteSpace(token) ? token.Trim() : null;
         }
         catch (OperationCanceledException)
         {
