@@ -250,6 +250,7 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
         catch (ArgumentException)
         {
             // Invalid persisted settings are reported by refresh and can be corrected in the UI.
+            _snapshotHistory.AddRange(storage.LoadSnapshots(_activeHostname));
         }
 
         RefreshCommand = new AsyncCommand((_, ct) => RefreshAsync(silent: false, ct));

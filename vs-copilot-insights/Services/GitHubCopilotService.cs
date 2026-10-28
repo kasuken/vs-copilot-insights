@@ -11,6 +11,7 @@ internal sealed class GitHubCopilotService
 {
     private static readonly HttpClient s_httpClient = new(new HttpClientHandler { AllowAutoRedirect = false })
     {
+        Timeout = TimeSpan.FromSeconds(15),
         DefaultRequestHeaders =
         {
             { "User-Agent", "VS-Copilot-Insights" },
