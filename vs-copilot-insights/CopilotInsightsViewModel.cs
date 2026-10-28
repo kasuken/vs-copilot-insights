@@ -33,6 +33,7 @@ internal sealed class QuotaCardViewModel : NotifyPropertyChangedBase
     private string _premiumAdvancedCapacity = string.Empty;
     private string _premiumOveragePolicy = string.Empty;
     private string _premiumMood = string.Empty;
+    private bool _showMood;
     private string _premiumRemainingPercent = string.Empty;
     private string _premiumRemaining = string.Empty;
     private string _premiumUsed = string.Empty;
@@ -59,6 +60,7 @@ internal sealed class QuotaCardViewModel : NotifyPropertyChangedBase
     [DataMember] public string PremiumAdvancedCapacity { get => _premiumAdvancedCapacity; set => SetField(ref _premiumAdvancedCapacity, value); }
     [DataMember] public string PremiumOveragePolicy { get => _premiumOveragePolicy; set => SetField(ref _premiumOveragePolicy, value); }
     [DataMember] public string PremiumMood { get => _premiumMood; set => SetField(ref _premiumMood, value); }
+    [DataMember] public bool ShowMood { get => _showMood; set => SetField(ref _showMood, value); }
     [DataMember] public string PremiumRemainingPercent { get => _premiumRemainingPercent; set => SetField(ref _premiumRemainingPercent, value); }
     [DataMember] public string PremiumRemaining { get => _premiumRemaining; set => SetField(ref _premiumRemaining, value); }
     [DataMember] public string PremiumUsed { get => _premiumUsed; set => SetField(ref _premiumUsed, value); }
@@ -104,6 +106,7 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
 
     private readonly List<LocalSnapshot> _snapshotHistory;
     private InsightsSettings _settings;
+    private string _activeHostname = "github.com";
     private CopilotUserData? _latestData;
     private CancellationTokenSource? _pollingCts;
     private readonly CancellationTokenSource _initialLoadCts = new();
@@ -197,11 +200,17 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
     // Settings + export status
     private string _customCreditLimitInput = string.Empty;
     private string _pollingIntervalInput = string.Empty;
+    private string _gitHubEnterpriseUriInput = string.Empty;
+    private bool _showMoodInput;
+    private bool _showUsedProgressInput;
     private string _settingsStatus = string.Empty;
     private string _exportStatus = string.Empty;
 
     [DataMember] public string CustomCreditLimitInput { get => _customCreditLimitInput; set => SetField(ref _customCreditLimitInput, value); }
     [DataMember] public string PollingIntervalInput { get => _pollingIntervalInput; set => SetField(ref _pollingIntervalInput, value); }
+    [DataMember] public string GitHubEnterpriseUriInput { get => _gitHubEnterpriseUriInput; set => SetField(ref _gitHubEnterpriseUriInput, value); }
+    [DataMember] public bool ShowMoodInput { get => _showMoodInput; set => SetField(ref _showMoodInput, value); }
+    [DataMember] public bool ShowUsedProgressInput { get => _showUsedProgressInput; set => SetField(ref _showUsedProgressInput, value); }
     [DataMember] public string SettingsStatus { get => _settingsStatus; set => SetField(ref _settingsStatus, value); }
     [DataMember] public string ExportStatus { get => _exportStatus; set => SetField(ref _exportStatus, value); }
 
@@ -231,8 +240,18 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
         _service = service;
         _extensibility = extensibility;
         _storage = storage;
-        _snapshotHistory = storage.LoadSnapshots();
         _settings = storage.LoadSettings();
+        _snapshotHistory = [];
+        try
+        {
+            _activeHostname = GitHubHostConfiguration.Parse(_settings.GitHubEnterpriseUri).Hostname;
+            _snapshotHistory.AddRange(storage.LoadSnapshots(_activeHostname));
+        }
+        catch (ArgumentException)
+        {
+            // Invalid persisted settings are reported by refresh and can be corrected in the UI.
+            _snapshotHistory.AddRange(storage.LoadSnapshots(_activeHostname));
+        }
 
         RefreshCommand = new AsyncCommand((_, ct) => RefreshAsync(silent: false, ct));
         CopyMarkdownCommand = new AsyncCommand(OnCopyMarkdownAsync);
@@ -273,7 +292,7 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
 
             try
             {
-                CopilotUserData data = await _service.GetCopilotUserDataAsync(cancellationToken);
+                CopilotUserData data = await _service.GetCopilotUserDataAsync(_settings.GitHubEnterpriseUri, cancellationToken);
                 _latestData = data;
                 RecordSnapshot(data);
                 PopulateFromData(data);
@@ -315,7 +334,7 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
 
         if (UsageAnalytics.AddSnapshot(_snapshotHistory, premium.Remaining, premium.Entitlement))
         {
-            _storage.SaveSnapshots(_snapshotHistory);
+            _storage.SaveSnapshots(_snapshotHistory, _activeHostname);
         }
     }
 
@@ -391,7 +410,8 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
                 card.IsOverQuota = isOver;
                 card.IsLimited = true;
                 (card.StatusEmoji, card.StatusLabel) = QuotaDisplayFormatter.GetStatusBadge(percentRemaining);
-                card.ProgressValue = Math.Clamp(percentRemaining, 0, 100);
+                bool showUsed = _settings.ProgressBarMode == "used";
+                card.ProgressValue = Math.Clamp(showUsed ? percentUsed : percentRemaining, 0, 100);
 
                 if (isOver)
                 {
@@ -406,8 +426,10 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
                 }
                 else
                 {
-                    card.UsageDisplay = $"{QuotaDisplayFormatter.Format(quota.QuotaRemaining)} / {QuotaDisplayFormatter.Format(quota.Entitlement)} remaining";
-                    card.PercentDisplay = $"{percentRemaining}% remaining";
+                    card.UsageDisplay = showUsed
+                        ? $"{QuotaDisplayFormatter.Format(used)} / {QuotaDisplayFormatter.Format(quota.Entitlement)} used"
+                        : $"{QuotaDisplayFormatter.Format(quota.QuotaRemaining)} / {QuotaDisplayFormatter.Format(quota.Entitlement)} remaining";
+                    card.PercentDisplay = showUsed ? $"{percentUsed}% used" : $"{percentRemaining}% remaining";
                 }
 
                 if (quota.QuotaId == PremiumQuotaId)
@@ -415,6 +437,7 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
                     premiumQuota = quota;
                     card.ShowPremiumStats = true;
                     card.PremiumMood = QuotaDisplayFormatter.GetMood(percentRemaining);
+                    card.ShowMood = _settings.ShowMood;
                     card.PremiumRemainingPercent = $"{Math.Max(0, percentRemaining)}% remaining";
                     card.PremiumRemaining = QuotaDisplayFormatter.Format(Math.Max(quota.QuotaRemaining, 0));
                     card.PremiumUsed = QuotaDisplayFormatter.Format(used);
@@ -615,17 +638,17 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
         string quotaLabel = hasCustomLimit ? "custom limit" : "monthly quota";
 
         string resetDate = data.QuotaResetDateUtc ?? string.Empty;
-        string? lastNotified = _storage.GetLastNotifiedReset();
+        string? lastNotified = _storage.GetLastNotifiedReset(_activeHostname);
 
         if (percentUsed >= PremiumUsageAlertThreshold && lastNotified != resetDate)
         {
             string message = $"Copilot AI Credits are at {QuotaDisplayFormatter.Format(percentUsed)}% of your {quotaLabel}.";
             _ = ShowAlertAsync(message);
-            _storage.SetLastNotifiedReset(resetDate);
+            _storage.SetLastNotifiedReset(resetDate, _activeHostname);
         }
         else if (!string.IsNullOrEmpty(lastNotified) && lastNotified != resetDate && percentUsed < PremiumUsageAlertThreshold)
         {
-            _storage.SetLastNotifiedReset(null);
+            _storage.SetLastNotifiedReset(null, _activeHostname);
         }
     }
 
@@ -677,9 +700,10 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
     {
         double customLimit = 0;
         if (!string.IsNullOrWhiteSpace(CustomCreditLimitInput)
-            && (!double.TryParse(CustomCreditLimitInput.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out customLimit) || customLimit < 0))
+            && (!double.TryParse(CustomCreditLimitInput.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out customLimit)
+                || !double.IsFinite(customLimit) || customLimit < 0 || customLimit > 10_000_000))
         {
-            SettingsStatus = "Custom credit limit must be a non-negative number.";
+            SettingsStatus = "Custom credit limit must be a finite number between 0 and 10,000,000.";
             return;
         }
 
@@ -691,50 +715,71 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
             return;
         }
 
-        _settings = new InsightsSettings
+        GitHubHostConfiguration host;
+        try
+        {
+            host = GitHubHostConfiguration.Parse(GitHubEnterpriseUriInput);
+        }
+        catch (ArgumentException ex)
+        {
+            SettingsStatus = ex.Message;
+            return;
+        }
+
+        await ApplySettingsAsync(new InsightsSettings
         {
             CustomCreditLimit = customLimit,
             PollingIntervalSeconds = NormalizePollingIntervalSeconds(pollingSeconds),
-        };
-        _storage.SaveSettings(_settings);
-        SyncSettingsInputs();
-        SettingsStatus = "Settings saved.";
-
-        RestartPolling();
-
-        await RepopulateAsync(cancellationToken).ConfigureAwait(false);
+            GitHubEnterpriseUri = host.EnterpriseUri,
+            ShowMood = ShowMoodInput,
+            ProgressBarMode = ShowUsedProgressInput ? "used" : "remaining",
+        }, "Settings saved.", cancellationToken).ConfigureAwait(false);
     }
 
     private async Task OnResetSettingsAsync(object? parameter, CancellationToken cancellationToken)
     {
-        _settings = new InsightsSettings();
-        _storage.SaveSettings(_settings);
-        SyncSettingsInputs();
-        SettingsStatus = "Settings reset to defaults.";
-
-        RestartPolling();
-
-        await RepopulateAsync(cancellationToken).ConfigureAwait(false);
+        await ApplySettingsAsync(new InsightsSettings(), "Settings reset to defaults.", cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Re-applies the current settings to the latest data under the refresh gate.</summary>
-    private async Task RepopulateAsync(CancellationToken cancellationToken)
+    private async Task ApplySettingsAsync(InsightsSettings settings, string status, CancellationToken cancellationToken)
     {
-        if (_latestData is null)
-        {
-            return;
-        }
-
+        GitHubHostConfiguration host = GitHubHostConfiguration.Parse(settings.GitHubEnterpriseUri);
+        bool hostChanged;
         await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // _latestData won't change while we hold _refreshGate;
-            // it is only written inside RefreshAsync, which also acquires the gate.
-            PopulateFromData(_latestData);
+            hostChanged = _activeHostname != host.Hostname;
+            _settings = settings;
+            if (hostChanged)
+            {
+                _activeHostname = host.Hostname;
+                _latestData = null;
+                HasData = false;
+                HasError = false;
+                ErrorMessage = string.Empty;
+                ExportStatus = string.Empty;
+                Quotas.Clear();
+                _snapshotHistory.Clear();
+                _snapshotHistory.AddRange(_storage.LoadSnapshots(_activeHostname));
+            }
+            else if (_latestData is not null)
+            {
+                PopulateFromData(_latestData);
+            }
+
+            _storage.SaveSettings(_settings);
+            SyncSettingsInputs();
+            SettingsStatus = $"{status} API: {host.ApiBaseUrl}";
         }
         finally
         {
             _refreshGate.Release();
+        }
+
+        RestartPolling();
+        if (hostChanged || _latestData is null)
+        {
+            await RefreshAsync(silent: false, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -744,6 +789,9 @@ internal sealed class CopilotInsightsViewModel : NotifyPropertyChangedBase, IDis
             ? _settings.CustomCreditLimit.ToString("0.##", CultureInfo.InvariantCulture)
             : "0";
         PollingIntervalInput = _settings.PollingIntervalSeconds.ToString(CultureInfo.InvariantCulture);
+        GitHubEnterpriseUriInput = _settings.GitHubEnterpriseUri;
+        ShowMoodInput = _settings.ShowMood;
+        ShowUsedProgressInput = _settings.ProgressBarMode == "used";
     }
 
     private void RestartPolling()

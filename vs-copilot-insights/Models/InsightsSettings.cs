@@ -21,4 +21,13 @@ internal sealed class InsightsSettings
     /// </summary>
     [JsonPropertyName("pollingIntervalSeconds")]
     public int PollingIntervalSeconds { get; set; } = DefaultPollingIntervalSeconds;
+
+    [JsonPropertyName("githubEnterpriseUri")]
+    public string GitHubEnterpriseUri { get; set; } = string.Empty;
+
+    [JsonPropertyName("showMood")]
+    public bool ShowMood { get; set; } = true;
+
+    [JsonPropertyName("progressBarMode")]
+    public string ProgressBarMode { get; set; } = "remaining";
 }
